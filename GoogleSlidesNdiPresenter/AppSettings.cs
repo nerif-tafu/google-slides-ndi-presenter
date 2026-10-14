@@ -47,7 +47,7 @@ public sealed class AppSettings
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    private static readonly string DefaultFilePath = Path.Combine(
+    internal static readonly string DefaultFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GoogleSlidesNdiPresenter", "settings.json");
 
     /// <summary>The settings file in use; overridden with the --settings command-line option.</summary>

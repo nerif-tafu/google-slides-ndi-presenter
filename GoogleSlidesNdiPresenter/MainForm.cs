@@ -18,11 +18,13 @@ public sealed class MainForm : Form
     private readonly AppSettings _settings;
     private readonly ApiServer _api;
     private readonly AudioRouter _audio;
+    private readonly GoogleAccount _google;
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Background };
     private LivePresenter? _live;
 
-    public MainForm(PresentationController controller, AppSettings settings, ApiServer api, AudioRouter audio)
+    public MainForm(PresentationController controller, AppSettings settings, ApiServer api, AudioRouter audio, GoogleAccount google)
     {
+        _google = google;
         _audio = audio;
         _controller = controller;
         _settings = settings;
@@ -63,6 +65,15 @@ public sealed class MainForm : Form
                 "The controls will open in your web browser instead. Install WebView2 from microsoft.com/edge/webview2 to fix this.\n\n" + ex.Message,
                 "WebView2 missing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             OpenExternal(_api.LocalUrl);
+        }
+
+        try
+        {
+            await _google.InitializeAsync(this, await WebViewEnvironment.GetAsync());
+        }
+        catch
+        {
+            // Without WebView2 there's no Google sign-in; public decks still work.
         }
 
         try

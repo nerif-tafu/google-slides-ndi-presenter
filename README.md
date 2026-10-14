@@ -82,6 +82,8 @@ Each one has its own volume. Changes apply as soon as you make them, so you can 
 
 Settings also covers the NDI source names, output resolution and frame rate, the remote control port, and whether other devices are allowed to connect at all. Apart from audio, these need a restart, which the Save button does for you.
 
+If your network uses an NDI discovery server, put its address in **Discovery server** (for example `192.168.1.10`, or `ndi-ds.local:5959` if it isn't on the default port; separate several with commas). Leave it empty and NDI finds receivers automatically, the same as before. The setting only applies to this app. Everything else from NDI Access Manager (groups, adapters, multicast and so on) still applies, and other NDI apps on the PC aren't affected.
+
 Everything is saved in `%APPDATA%\GoogleSlidesNdiPresenter\settings.json`.
 
 To run a second copy with different source names and its own port, give it its own settings file:

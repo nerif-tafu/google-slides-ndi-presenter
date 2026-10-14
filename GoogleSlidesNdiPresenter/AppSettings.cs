@@ -29,6 +29,8 @@ public sealed class AppSettings
     public int ApiPort { get; set; } = 8080;
     public string SlidesNdiName { get; set; } = "GSlides Slides";
     public string NotesNdiName { get; set; } = "GSlides Notes";
+    /// <summary>NDI discovery server(s), comma separated ("host" or "host:port"). Empty = automatic discovery.</summary>
+    public string NdiDiscoveryServer { get; set; } = "";
     public int Width { get; set; } = 1920;
     public int Height { get; set; } = 1080;
     public int FrameRate { get; set; } = 30;

@@ -387,6 +387,7 @@ public sealed class ApiServer : IAsyncDisposable
     {
         public string SlidesNdiName { get; set; } = "";
         public string NotesNdiName { get; set; } = "";
+        public string NdiDiscoveryServer { get; set; } = "";
         public int ApiPort { get; set; }
         public bool RemoteAccess { get; set; }
         public int Width { get; set; }
@@ -401,7 +402,7 @@ public sealed class ApiServer : IAsyncDisposable
 
         public static SettingsDto From(AppSettings s) => new()
         {
-            SlidesNdiName = s.SlidesNdiName, NotesNdiName = s.NotesNdiName, ApiPort = s.ApiPort,
+            SlidesNdiName = s.SlidesNdiName, NotesNdiName = s.NotesNdiName, NdiDiscoveryServer = s.NdiDiscoveryServer, ApiPort = s.ApiPort,
             RemoteAccess = s.RemoteAccess, Width = s.Width, Height = s.Height, FrameRate = s.FrameRate,
             AudioOutputDevice = s.AudioOutputDevice, AudioOutputVolume = s.AudioOutputVolume,
             AudioMonitorDevice = s.AudioMonitorDevice, AudioMonitorVolume = s.AudioMonitorVolume,
@@ -411,6 +412,8 @@ public sealed class ApiServer : IAsyncDisposable
         {
             if (string.IsNullOrWhiteSpace(SlidesNdiName) || string.IsNullOrWhiteSpace(NotesNdiName))
                 return "NDI source names can't be empty.";
+            if (Ndi.NdiConfig.Normalise(NdiDiscoveryServer) == null)
+                return "Discovery server should be an address like 192.168.1.10 or ndi-ds.local:5959. Separate several with commas.";
             if (SlidesNdiName.Trim() == NotesNdiName.Trim())
                 return "The two NDI sources need different names.";
             if (ApiPort is < 1024 or > 65535) return "Port must be between 1024 and 65535.";
@@ -423,6 +426,7 @@ public sealed class ApiServer : IAsyncDisposable
         {
             s.SlidesNdiName = SlidesNdiName.Trim();
             s.NotesNdiName = NotesNdiName.Trim();
+            s.NdiDiscoveryServer = Ndi.NdiConfig.Normalise(NdiDiscoveryServer) ?? "";
             s.ApiPort = ApiPort;
             s.RemoteAccess = RemoteAccess;
             s.Width = Width;

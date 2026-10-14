@@ -197,14 +197,17 @@
       el.dataset.state = 'error';
       status.textContent = 'NDI not available';
       el.title = error || '';
-    } else if (receivers > 0) {
-      el.dataset.state = 'live';
-      status.textContent = `${plural(receivers, 'receiver')} connected`;
-      el.title = '';
     } else {
-      el.dataset.state = 'idle';
-      status.textContent = 'Waiting for a receiver';
-      el.title = 'The source is on the network; nothing is watching it yet.';
+      const via = state && state.ndiDiscovery ? `Registered with discovery server ${state.ndiDiscovery}.` : '';
+      if (receivers > 0) {
+        el.dataset.state = 'live';
+        status.textContent = `${plural(receivers, 'receiver')} connected`;
+        el.title = via;
+      } else {
+        el.dataset.state = 'idle';
+        status.textContent = 'Waiting for a receiver';
+        el.title = `The source is on the network; nothing is watching it yet. ${via}`.trim();
+      }
     }
   }
 
@@ -519,6 +522,7 @@
       const s = await (await fetch('/api/settings')).json();
       form.slidesNdiName.value = s.slidesNdiName;
       form.notesNdiName.value = s.notesNdiName;
+      form.ndiDiscoveryServer.value = s.ndiDiscoveryServer || '';
       const res = `${s.width}x${s.height}`;
       if (![...form.resolution.options].some(o => o.value === res)) form.resolution.add(new Option(`${s.width} × ${s.height}`, res));
       form.resolution.value = res;
@@ -610,7 +614,7 @@
     const f = e.currentTarget;
     const [width, height] = f.resolution.value.split('x').map(Number);
     const body = {
-      slidesNdiName: f.slidesNdiName.value, notesNdiName: f.notesNdiName.value,
+      slidesNdiName: f.slidesNdiName.value, notesNdiName: f.notesNdiName.value, ndiDiscoveryServer: f.ndiDiscoveryServer.value,
       width, height, frameRate: Number(f.frameRate.value),
       remoteAccess: f.remoteAccess.checked, apiPort: Number(f.apiPort.value),
     };

@@ -265,6 +265,10 @@
           <p>How the two sources appear in vMix, OBS, Tricaster and other NDI receivers.</p>
           <label class="field"><span>Slides source name</span><input name="slidesNdiName" required maxlength="60"></label>
           <label class="field"><span>Presenter view source name</span><input name="notesNdiName" required maxlength="60"></label>
+          <label class="field"><span>Discovery server</span>
+            <input name="ndiDiscoveryServer" maxlength="200" spellcheck="false" placeholder="Automatic (leave empty)">
+            <small class="field-help">Only needed if your network uses an NDI discovery server, e.g. <code>192.168.1.10</code> or <code>ndi-ds.local:5959</code>. Separate several with commas.</small>
+          </label>
           <div class="field-row">
             <label class="field"><span>Resolution</span>
               <select name="resolution">

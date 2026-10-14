@@ -29,6 +29,7 @@ public sealed record PresentationState(
     int SlidesReceivers,
     int NotesReceivers,
     string? NdiError,
+    string? NdiDiscovery,   // discovery server(s) the NDI outputs register with, or null for automatic discovery
     string? LiveError,
     IReadOnlyList<RecentPresentation> Recent);
 
@@ -68,6 +69,7 @@ public sealed class PresentationController : IDisposable
     private float _maxScroll;
     private string _url;
     private bool _loading;
+    private readonly string? _ndiDiscovery;
     private string? _loadingId;
     private string? _loadingTitle;
     private bool _loadingRefresh;
@@ -98,6 +100,8 @@ public sealed class PresentationController : IDisposable
 
         try
         {
+            NdiConfig.Apply(settings.NdiDiscoveryServer); // must happen before NDI starts
+            _ndiDiscovery = NdiConfig.Normalise(settings.NdiDiscoveryServer) is { Length: > 0 } d ? d : null;
             NdiInterop.EnsureResolver();
             if (!NdiInterop.Initialize())
                 throw new InvalidOperationException("NDIlib_initialize failed (unsupported CPU?).");
@@ -163,6 +167,7 @@ public sealed class PresentationController : IDisposable
                 _slidesSender?.Connections ?? 0,
                 _notesSender?.Connections ?? 0,
                 NdiError,
+                _ndiDiscovery,
                 _liveError,
                 _settings.Recent.ToList());
         }

@@ -18,6 +18,9 @@ public sealed record PresentationState(
     float NotesMaxScroll,
     string Notes,
     bool Loading,
+    string? LoadingId,      // deck being opened or refreshed, whoever started it (UI, phone, Companion…)
+    string? LoadingTitle,   // its title if known (from recents), for the "Opening …" overlay
+    bool LoadingRefresh,    // true when reloading the deck that's already open
     bool Live,
     VideoInfo? Video,   // video on the current slide, null when there is none
     string Status,
@@ -65,6 +68,9 @@ public sealed class PresentationController : IDisposable
     private float _maxScroll;
     private string _url;
     private bool _loading;
+    private string? _loadingId;
+    private string? _loadingTitle;
+    private bool _loadingRefresh;
     private string _status = "Ready";
     private Bitmap? _slideFrame;
     private Bitmap? _notesFrame;
@@ -146,6 +152,9 @@ public sealed class PresentationController : IDisposable
                 _maxScroll,
                 NotesFor(_index) ?? "",
                 _loading,
+                _loading ? _loadingId : null,
+                _loading ? _loadingTitle : null,
+                _loading && _loadingRefresh,
                 _live != null,
                 _video,
                 _status,
@@ -253,6 +262,9 @@ public sealed class PresentationController : IDisposable
             lock (_lock)
             {
                 _loading = true;
+                _loadingId = id;
+                _loadingRefresh = id != null && id == _presentation?.Id;
+                _loadingTitle = _loadingRefresh ? _presentation?.Title : _settings.Recent.FirstOrDefault(r => r.Id == id)?.Title;
                 _status = "Loading presentation…";
                 if (id != null && _live != null)
                 {

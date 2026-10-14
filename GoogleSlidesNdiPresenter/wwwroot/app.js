@@ -127,6 +127,11 @@
     const prev = state;
     state = s;
 
+    // Loads started elsewhere (Companion, a phone, the HTTP API, or reopening the last deck at
+    // startup) get the same overlay as ones started from this window.
+    if (s.loading && !switching) setSwitching({ id: s.loadingId, title: s.loadingTitle, refresh: s.loadingRefresh, remote: true });
+    else if (!s.loading && switching && switching.remote) setSwitching(null);
+
     const hasDeck = !!s.presentationId || s.slideCount > 0;
     app.dataset.view = hasDeck ? 'stage' : 'empty';
 

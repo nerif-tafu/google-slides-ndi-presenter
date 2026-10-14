@@ -1,0 +1,57 @@
+name: Release
+
+# Builds the Windows exe and attaches it to the release whenever a release is published.
+# It can also be run by hand against an existing release tag (e.g. to rebuild an asset).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach to (e.g. v1.0.1)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Work out the version from the tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.event.release.tag_name || inputs.tag }}'
+          $version = $tag.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "Tag '$tag' isn't a version like v1.2.3" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build a single self-contained exe
+        shell: pwsh
+        run: >
+          dotnet publish GoogleSlidesNdiPresenter -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Attach the exe to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $asset = "GoogleSlidesNdiPresenter-${{ steps.version.outputs.version }}-win-x64.exe"
+          Copy-Item publish/GoogleSlidesNdiPresenter.exe $asset
+          gh release upload "${{ steps.version.outputs.tag }}" $asset --clobber --repo "${{ github.repository }}"

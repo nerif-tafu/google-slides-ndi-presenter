@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0c10">
+  <title>Google Slides NDI Presenter</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <!-- Icon sprite (Lucide-style, 24px grid, stroke icons) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+      <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-rewind" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 19 8 12l10-7z" fill="currentColor"/><path d="M6 5v14"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path d="m6 5 10 7-10 7z" fill="currentColor"/><path d="M18 5v14"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1.2" fill="currentColor" stroke="none"/><rect x="14" y="4.5" width="4" height="15" rx="1.2" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2.5"/><path d="m22 8-6 4 6 4z"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M8 16h8M10 13h4"/></symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2.5"/><path d="M8 21h8M12 17v4"/></symbol>
+      <symbol id="i-notes" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></symbol>
+      <symbol id="i-fit" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+      <symbol id="i-cast" viewBox="0 0 24 24"><path d="M4.9 19.1a10 10 0 0 1 0-14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9a10 10 0 0 1 0 14.2"/><circle cx="12" cy="12" r="2"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+      <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app" data-view="empty">
+    <!-- ============ Sidebar ============ -->
+    <aside class="sidebar" id="sidebar">
+      <button class="btn btn-primary btn-block" id="openBtn" type="button">
+        <svg class="ic"><use href="#i-plus"/></svg>
+        <span>Open presentation</span>
+        <kbd class="kbd-hint">Ctrl O</kbd>
+      </button>
+
+      <div class="side-scroll">
+        <section class="side-section">
+          <h3 class="side-title">Recent</h3>
+          <ul class="recent-list" id="recentList"></ul>
+          <p class="side-empty" id="recentEmpty">Presentations you open will show up here.</p>
+        </section>
+
+        <section class="side-section">
+          <h3 class="side-title">NDI outputs</h3>
+          <ul class="output-list">
+            <li class="output" id="outSlides">
+              <span class="output-icon"><svg class="ic"><use href="#i-monitor"/></svg></span>
+              <div class="output-text"><strong data-name>Slides</strong><span data-status>Starting…</span></div>
+            </li>
+            <li class="output" id="outNotes">
+              <span class="output-icon"><svg class="ic"><use href="#i-notes"/></svg></span>
+              <div class="output-text"><strong data-name>Notes</strong><span data-status>Starting…</span></div>
+            </li>
+          </ul>
+        </section>
+
+        <section class="side-section" id="remoteSection">
+          <h3 class="side-title">Remote control</h3>
+          <div class="remote-card" id="remoteCard">
+            <div id="remoteUrls"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="side-footer">
+        <button class="btn btn-ghost btn-sm" id="settingsBtn" type="button" title="Settings (Ctrl ,)">
+          <svg class="ic"><use href="#i-settings"/></svg><span>Settings</span>
+        </button>
+        <button class="btn btn-ghost btn-sm btn-icon" id="shortcutsBtn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+          <svg class="ic"><use href="#i-keyboard"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ============ Main ============ -->
+    <main class="main">
+      <!-- Shown over the whole panel while switching to another presentation -->
+      <div class="switch-overlay" id="switchOverlay" aria-live="polite">
+        <div class="switch-card">
+          <span class="spinner"></span>
+          <strong id="switchTitle">Opening presentation…</strong>
+          <span id="switchSub">Downloading slides and speaker notes</span>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <section class="empty" id="emptyView">
+        <div class="empty-corner">
+          <button class="btn btn-ghost btn-sm" id="emptySettingsBtn" type="button" title="Settings (Ctrl ,)">
+            <svg class="ic"><use href="#i-settings"/></svg><span>Settings</span>
+          </button>
+          <button class="btn btn-ghost btn-sm btn-icon" id="emptyShortcutsBtn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+            <svg class="ic"><use href="#i-keyboard"/></svg>
+          </button>
+        </div>
+        <div class="empty-inner">
+          <div class="empty-art"><img src="/icon.svg" alt="" width="72" height="72"></div>
+          <h1>Present Google Slides over NDI</h1>
+          <p class="lead">Paste a share link to send the live slides and a presenter view with your speaker notes to any NDI receiver.</p>
+          <form class="url-form" id="emptyForm" autocomplete="off">
+            <div class="url-field" id="emptyField">
+              <svg class="ic"><use href="#i-link"/></svg>
+              <input id="emptyUrl" type="text" spellcheck="false" placeholder="https://docs.google.com/presentation/d/…" aria-label="Google Slides link">
+              <button class="btn btn-primary" type="submit" id="emptySubmit">Open</button>
+            </div>
+            <p class="field-hint" id="emptyHint">The presentation must be shared as <b>Anyone with the link can view</b>.</p>
+          </form>
+          <div class="empty-recent" id="emptyRecentWrap">
+            <h2>Jump back in</h2>
+            <div class="card-grid" id="emptyRecent"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Presenting -->
+      <section class="stage" id="stageView">
+        <header class="topbar">
+          <button class="btn btn-ghost btn-icon only-mobile" id="menuBtn" type="button" aria-label="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
+          <div class="title-block">
+            <h1 id="deckTitle">Untitled presentation</h1>
+            <span class="meta" id="deckMeta"></span>
+          </div>
+          <div class="top-actions">
+            <span class="chip chip-warn" id="liveWarn" hidden title="">
+              <svg class="ic"><use href="#i-alert"/></svg>Static slides
+            </span>
+            <a class="btn btn-secondary" id="openInSlides" target="_blank" rel="noopener" title="Open in Google Slides">
+              <svg class="ic"><use href="#i-external"/></svg><span class="hide-sm">Edit in Slides</span>
+            </a>
+            <button class="btn btn-secondary" id="refreshBtn" type="button" title="Reload the presentation (R)">
+              <svg class="ic"><use href="#i-refresh"/></svg><span class="hide-sm">Refresh</span>
+            </button>
+            <button class="btn btn-secondary" id="closeBtn" type="button" title="Close the presentation (Ctrl+W)">
+              <svg class="ic"><use href="#i-x"/></svg><span class="hide-sm">Close</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="monitors">
+          <figure class="monitor">
+            <figcaption class="monitor-head">
+              <strong>Slides</strong>
+            </figcaption>
+            <div class="screen">
+              <img id="slidesStream" alt="Slides output">
+              <div class="video-controls" id="videoControls" hidden>
+                <button class="video-overlay" id="videoBtn" type="button">
+                  <svg class="ic"><use href="#i-play" id="videoIcon"/></svg>
+                  <span id="videoBtnText">Play video</span>
+                  <span class="video-meta" id="videoMeta"></span>
+                </button>
+                <button class="video-overlay video-icon-btn" id="videoRestartBtn" type="button"
+                        title="Back to the start of the video (Shift+P)" aria-label="Back to the start of the video">
+                  <svg class="ic"><use href="#i-rewind"/></svg>
+                </button>
+              </div>
+              <div class="meter" id="meter" aria-hidden="true" title="Slide audio level">
+                <span class="meter-bar"><i id="meterL"></i></span>
+                <span class="meter-bar"><i id="meterR"></i></span>
+              </div>
+            </div>
+            <div class="mon-toolbar">
+              <button class="btn btn-secondary nav-btn" id="prevBtn" type="button" title="Previous build or slide (←)">
+                <svg class="ic"><use href="#i-chev-left"/></svg><span>Previous</span>
+              </button>
+              <button class="btn btn-primary nav-btn nav-next" id="nextBtn" type="button" title="Next build or slide (→ or Space)">
+                <span>Next</span><svg class="ic"><use href="#i-chev-right"/></svg>
+              </button>
+              <span class="tb-spacer"></span>
+              <span class="slide-pos" id="slidePos" title="Type a slide number and press Enter to jump">
+                Slide <strong id="posNow">–</strong> of <span id="posTotal">–</span>
+              </span>
+            </div>
+          </figure>
+          <figure class="monitor">
+            <figcaption class="monitor-head">
+              <strong>Presenter view</strong>
+            </figcaption>
+            <div class="screen"><img id="notesStream" alt="Presenter view output"></div>
+            <div class="mon-toolbar">
+              <div class="stepper" title="Notes text size (− / +)">
+                <button type="button" id="sizeDown" aria-label="Smaller notes text"><svg class="ic"><use href="#i-minus"/></svg></button>
+                <span class="stepper-val"><svg class="ic ic-sm"><use href="#i-type"/></svg><span id="sizeVal">48</span><small>px</small></span>
+                <button type="button" id="sizeUp" aria-label="Bigger notes text"><svg class="ic"><use href="#i-plus"/></svg></button>
+              </div>
+              <button class="toggle" id="autoBtn" type="button" role="switch" aria-checked="false" title="Fit notes to the screen (A)">
+                <span class="track"><span class="thumb"></span></span><span>Auto-fit</span>
+              </button>
+              <span class="tb-spacer"></span>
+              <div class="seg-group" role="group" aria-label="Scroll notes">
+                <button type="button" id="scrollUpBtn" title="Scroll notes up (↑)" aria-label="Scroll notes up"><svg class="ic"><use href="#i-up"/></svg></button>
+                <button type="button" id="scrollDownBtn" title="Scroll notes down (↓)" aria-label="Scroll notes down"><svg class="ic"><use href="#i-down"/></svg></button>
+              </div>
+            </div>
+          </figure>
+        </div>
+
+        <section class="filmstrip-section">
+          <div class="section-head">
+            <h2>Slides</h2><span class="count" id="slideCountLabel"></span>
+            <span class="spacer"></span>
+            <span class="hint">Click a slide to jump to it · type a number then Enter</span>
+          </div>
+          <div class="filmstrip" id="filmstrip" role="listbox" aria-label="Slides"></div>
+        </section>
+      </section>
+    </main>
+
+  </div>
+
+  <!-- ============ Open dialog ============ -->
+  <dialog class="modal" id="openDialog">
+    <form method="dialog" class="modal-card" id="openForm" autocomplete="off">
+      <header class="modal-head">
+        <h2>Open presentation</h2>
+        <button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="url-field" id="openField">
+        <svg class="ic"><use href="#i-link"/></svg>
+        <input id="openUrl" type="text" spellcheck="false" placeholder="Paste a Google Slides link" aria-label="Google Slides link">
+      </div>
+      <p class="field-hint" id="openHint">The presentation must be shared as <b>Anyone with the link can view</b>.</p>
+      <button class="clip-suggest" id="clipSuggest" type="button" hidden>
+        <svg class="ic"><use href="#i-clipboard"/></svg><span>Use link from clipboard</span><code id="clipText"></code>
+      </button>
+      <footer class="modal-foot">
+        <button class="btn btn-ghost" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" id="openSubmit" value="default" type="submit">Open</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ============ Settings dialog ============ -->
+  <dialog class="modal" id="settingsDialog">
+    <form method="dialog" class="modal-card modal-wide" id="settingsForm" autocomplete="off">
+      <header class="modal-head">
+        <h2>Settings</h2>
+        <button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </header>
+
+      <div class="settings-body">
+        <section class="set-group">
+          <h3>NDI outputs</h3>
+          <p>How the two sources appear in vMix, OBS, Tricaster and other NDI receivers.</p>
+          <label class="field"><span>Slides source name</span><input name="slidesNdiName" required maxlength="60"></label>
+          <label class="field"><span>Presenter view source name</span><input name="notesNdiName" required maxlength="60"></label>
+          <div class="field-row">
+            <label class="field"><span>Resolution</span>
+              <select name="resolution">
+                <option value="1280x720">1280 × 720 (720p)</option>
+                <option value="1920x1080">1920 × 1080 (1080p)</option>
+                <option value="2560x1440">2560 × 1440 (1440p)</option>
+                <option value="3840x2160">3840 × 2160 (4K)</option>
+              </select>
+            </label>
+            <label class="field"><span>Frame rate</span>
+              <select name="frameRate">
+                <option value="25">25 fps</option>
+                <option value="30">30 fps</option>
+                <option value="50">50 fps</option>
+                <option value="60">60 fps</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="set-group" id="audioGroup">
+          <h3>Audio</h3>
+          <p>Sound from videos and audio on your slides. These changes apply straight away.</p>
+          <div class="audio-row">
+            <label class="field"><span>Output device</span><select name="audioOutputDevice"></select></label>
+            <label class="field field-volume"><span>Volume <b id="outVolLabel">100%</b></span>
+              <input type="range" name="audioOutputVolume" min="0" max="100" step="1"></label>
+          </div>
+          <div class="audio-row">
+            <label class="field"><span>Monitor device</span><select name="audioMonitorDevice"></select></label>
+            <label class="field field-volume"><span>Volume <b id="monVolLabel">100%</b></span>
+              <input type="range" name="audioMonitorVolume" min="0" max="100" step="1"></label>
+          </div>
+          <p class="form-error" id="audioError"></p>
+        </section>
+
+        <section class="set-group">
+          <h3>Remote control</h3>
+          <p>The web remote and REST API, for phones, Stream Deck, Companion and scripts.</p>
+          <label class="switch-row">
+            <span><strong>Allow other devices</strong><small>Off = only this computer can control the app</small></span>
+            <input type="checkbox" name="remoteAccess" class="switch-input">
+          </label>
+          <label class="field field-narrow"><span>Port</span><input name="apiPort" type="number" min="1024" max="65535" required></label>
+        </section>
+
+        <p class="settings-note"><svg class="ic ic-sm"><use href="#i-alert"/></svg>NDI and remote control changes take effect after the app restarts.</p>
+      </div>
+
+      <footer class="modal-foot">
+        <span class="form-error" id="settingsError"></span>
+        <button class="btn btn-ghost" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" id="settingsSave" type="submit" value="default">Save &amp; restart</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ============ Shortcuts dialog ============ -->
+  <dialog class="modal" id="shortcutsDialog">
+    <form method="dialog" class="modal-card">
+      <header class="modal-head">
+        <h2>Keyboard shortcuts</h2>
+        <button class="btn btn-ghost btn-icon" type="button" data-close aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="shortcut-grid">
+        <h3>Presenting</h3>
+        <div><span>Next build or slide</span><span><kbd>→</kbd><kbd>Space</kbd><kbd>PgDn</kbd></span></div>
+        <div><span>Previous</span><span><kbd>←</kbd><kbd>PgUp</kbd></span></div>
+        <div><span>First / last slide</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
+        <div><span>Go to slide</span><span><kbd>1</kbd><kbd>2</kbd>…<kbd>Enter</kbd></span></div>
+        <div><span>Play / pause video</span><span><kbd>P</kbd></span></div>
+        <div><span>Video back to the start</span><span><kbd>Shift</kbd><kbd>P</kbd></span></div>
+        <h3>Notes</h3>
+        <div><span>Bigger / smaller text</span><span><kbd>+</kbd><kbd>−</kbd></span></div>
+        <div><span>Auto-fit text</span><span><kbd>A</kbd></span></div>
+        <div><span>Scroll</span><span><kbd>↑</kbd><kbd>↓</kbd></span></div>
+        <h3>App</h3>
+        <div><span>Open presentation</span><span><kbd>Ctrl</kbd><kbd>O</kbd></span></div>
+        <div><span>Refresh presentation</span><span><kbd>R</kbd></span></div>
+        <div><span>Close presentation</span><span><kbd>Ctrl</kbd><kbd>W</kbd></span></div>
+        <div><span>Settings</span><span><kbd>Ctrl</kbd><kbd>,</kbd></span></div>
+        <div><span>This list</span><span><kbd>?</kbd></span></div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="goto-hud" id="gotoHud" hidden>Go to slide <strong id="gotoNum"></strong></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="conn-banner" id="connBanner" hidden>Reconnecting to the presenter…</div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

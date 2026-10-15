@@ -43,8 +43,11 @@ public sealed class LivePresenter : IDisposable
     /// <summary>Raised on the UI thread when the state of the current slide's video changes (null = no video).</summary>
     public event Action<VideoInfo?>? VideoChanged;
 
-    /// <summary>Raised on the UI thread with captured slide audio: 48 kHz stereo, interleaved 32-bit float.</summary>
-    public event Action<byte[]>? AudioCaptured;
+    /// <summary>
+    /// Raised on the UI thread with captured slide audio: stereo, interleaved 32-bit float, at the
+    /// given sample rate (the browser's output device rate, e.g. 44100 or 48000).
+    /// </summary>
+    public event Action<byte[], int>? AudioCaptured;
 
     private LivePresenter(int width, int height)
     {
@@ -93,6 +96,8 @@ public sealed class LivePresenter : IDisposable
 
         await core.AddScriptToExecuteOnDocumentCreatedAsync(TrackerScript);
         await core.CallDevToolsProtocolMethodAsync("Page.enable", "{}");
+        // Lets the audio capture load its AudioWorklet in the YouTube player frames, whose CSP blocks it.
+        await core.CallDevToolsProtocolMethodAsync("Page.setBypassCSP", "{\"enabled\":true}");
         await core.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride", JsonSerializer.Serialize(new
         {
             width = _width,
@@ -184,10 +189,12 @@ public sealed class LivePresenter : IDisposable
         try
         {
             var message = e.TryGetWebMessageAsString();
-            // Audio chunks are frequent, so they skip JSON parsing: {"audio":"<base64>"}
+            // Audio chunks are frequent, so they skip JSON parsing: {"audio":"<rate>:<base64>"}
             if (message.StartsWith("{\"audio\":\"", StringComparison.Ordinal))
             {
-                AudioCaptured?.Invoke(Convert.FromBase64String(message[10..^2]));
+                var colon = message.IndexOf(':', 10);
+                if (colon > 10 && int.TryParse(message.AsSpan(10, colon - 10), out var rate) && rate > 0)
+                    AudioCaptured?.Invoke(Convert.FromBase64String(message[(colon + 1)..^2]), rate);
                 return;
             }
             using var doc = JsonDocument.Parse(message);
@@ -270,24 +277,59 @@ public sealed class LivePresenter : IDisposable
               for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
               return btoa(s);
             };
+            // Sends a block of interleaved stereo samples to the app, unless it's silence.
+            const send = out => {
+              let peak = 0;
+              for (let i = 0; i < out.length; i++) { const a = Math.abs(out[i]); if (a > peak) peak = a; }
+              if (peak < 1e-5) return;
+              window.top.postMessage({ gsAudio: toBase64(out), rate: ctx.sampleRate }, '*');
+              sent++;
+            };
+            // Collects 2048-frame blocks on the audio thread. A ScriptProcessor (the fallback) runs on
+            // the page's main thread, and whenever that's a little late Chromium drops 128-frame
+            // slices of audio, heard as clicks.
+            const worklet = `registerProcessor('gs-tap', class extends AudioWorkletProcessor {
+              constructor() { super(); this.buf = new Float32Array(4096); this.n = 0; }
+              process(inputs) {
+                const inp = inputs[0];
+                if (inp && inp.length) {
+                  const L = inp[0], R = inp[1] || inp[0];
+                  for (let i = 0; i < L.length; i++) {
+                    this.buf[2 * this.n] = L[i]; this.buf[2 * this.n + 1] = R[i];
+                    if (++this.n === 2048) { this.port.postMessage(this.buf, [this.buf.buffer]); this.buf = new Float32Array(4096); this.n = 0; }
+                  }
+                }
+                return true;
+              }
+            });`;
             const setup = () => {
-              ctx = new AudioContext({ sampleRate: 48000 });
+              // At the output device's own rate (the app resamples), so Chromium doesn't have to.
+              ctx = new AudioContext();
               mix = ctx.createGain();
-              const proc = ctx.createScriptProcessor(2048, 2, 2);
               const silent = ctx.createGain();
-              silent.gain.value = 0; // keeps the processor running without playing anything locally
-              mix.connect(proc); proc.connect(silent); silent.connect(ctx.destination);
-              proc.onaudioprocess = e => {
-                const L = e.inputBuffer.getChannelData(0), R = e.inputBuffer.getChannelData(1);
-                let peak = 0;
-                for (let i = 0; i < L.length; i++) { const a = Math.abs(L[i]), b = Math.abs(R[i]); if (a > peak) peak = a; if (b > peak) peak = b; }
-                if (peak < 1e-5) return; // silence: send nothing
-                const out = new Float32Array(L.length * 2);
-                for (let i = 0; i < L.length; i++) { out[2 * i] = L[i]; out[2 * i + 1] = R[i]; }
-                window.top.postMessage({ gsAudio: toBase64(out) }, '*');
-                sent++;
+              silent.gain.value = 0; // keeps the capture node running without playing anything locally
+              silent.connect(ctx.destination);
+              const scriptProcessor = () => {
+                const proc = ctx.createScriptProcessor(2048, 2, 2);
+                proc.onaudioprocess = e => {
+                  const L = e.inputBuffer.getChannelData(0), R = e.inputBuffer.getChannelData(1);
+                  const out = new Float32Array(L.length * 2);
+                  for (let i = 0; i < L.length; i++) { out[2 * i] = L[i]; out[2 * i + 1] = R[i]; }
+                  send(out);
+                };
+                mix.connect(proc); proc.connect(silent);
               };
-              diag('context ' + ctx.state + ' @' + ctx.sampleRate);
+              const blobUrl = URL.createObjectURL(new Blob([worklet], { type: 'application/javascript' }));
+              const dataUrl = 'data:application/javascript;base64,' + btoa(worklet);
+              ctx.audioWorklet.addModule(blobUrl).catch(() => ctx.audioWorklet.addModule(dataUrl)).then(() => {
+                const node = new AudioWorkletNode(ctx, 'gs-tap', { channelCount: 2, channelCountMode: 'explicit', outputChannelCount: [2] });
+                node.port.onmessage = e => send(e.data);
+                mix.connect(node); node.connect(silent);
+                diag('capturing on the audio thread @' + ctx.sampleRate);
+              }).catch(err => {
+                diag('audio worklet unavailable (' + err + '), using ScriptProcessor @' + ctx.sampleRate);
+                scriptProcessor();
+              });
             };
             // Reload a media element with or without CORS, keeping its position and play state.
             const reload = (m, cors) => {
@@ -421,7 +463,7 @@ public sealed class LivePresenter : IDisposable
             const d = e.data;
             if (!d) return;
             if (d.gsVideoState) { if (fromVisible(e.source)) { frameVideo = d.gsVideoState; frameVideoAt = Date.now(); } }
-            else if (d.gsAudio) { if (fromVisible(e.source)) window.chrome.webview.postMessage('{"audio":"' + d.gsAudio + '"}'); }
+            else if (d.gsAudio) { if (fromVisible(e.source)) window.chrome.webview.postMessage('{"audio":"' + (d.rate | 0) + ':' + d.gsAudio + '"}'); }
             else if (d.gsAudioDiag) window.chrome.webview.postMessage(JSON.stringify({ diag: d.gsAudioDiag }));
           });
 

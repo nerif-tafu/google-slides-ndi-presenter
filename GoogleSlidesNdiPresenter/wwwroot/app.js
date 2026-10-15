@@ -228,19 +228,52 @@
   }
 
 
+  const clock = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+  // The play/rewind controls on the slide monitor work for both video and audio clips.
   function renderVideo(video) {
     const btn = $('#videoBtn');
     $('#videoControls').hidden = !video;
     if (!video) return;
+    const noun = video.kind === 'audio' ? 'audio' : 'video';
     const playing = video.state === 'playing' || video.state === 'buffering';
     btn.classList.toggle('is-playing', playing);
     $('#videoIcon').setAttribute('href', playing ? '#i-pause' : '#i-play');
-    $('#videoBtnText').textContent = playing ? 'Pause video' : video.state === 'ended' ? 'Replay video' : 'Play video';
+    $('#videoBtnText').textContent = `${playing ? 'Pause' : video.state === 'ended' ? 'Replay' : 'Play'} ${noun}`;
+    const parts = [];
+    if (video.state === 'buffering') parts.push('Buffering…');
+    else if (video.duration > 0) parts.push(`${clock(video.position)} / ${clock(video.duration)}`);
     const q = qualityLabel(video.quality) || qualityLabel(video.best);
-    $('#videoMeta').textContent = video.state === 'buffering' ? 'Buffering…' : q;
-    btn.title = (playing ? 'Pause' : 'Play') + ' the video on this slide (P)' +
-      (video.best ? ` — best quality available: ${qualityLabel(video.best) || video.best}` : '');
+    if (noun === 'video' && q && video.state !== 'buffering') parts.push(q);
+    $('#videoMeta').textContent = parts.join(' · ');
+    btn.title = `${playing ? 'Pause' : 'Play'} the ${noun} on this slide (P)` +
+      (noun === 'video' && video.best ? ` — best quality available: ${qualityLabel(video.best) || video.best}` : '');
   }
+
+  // ------------------------------------------------------------------ Audio and video list
+
+  const START_LABELS = { automatic: 'Automatically', 'on click': 'On click', manual: 'Manually' };
+  function showMediaList() {
+    if (anyDialogOpen() || !state) return;
+    const media = state.media || [];
+    const list = $('#mediaList');
+    if (!media.length) {
+      list.innerHTML = '<p class="media-empty">There’s no audio or video in this presentation.</p>';
+    } else {
+      list.innerHTML = `<table class="media-table">
+        <thead><tr><th>Slide</th><th>Media</th><th>Starts</th><th>Sound</th></tr></thead>
+        <tbody>${media.map(m => `
+          <tr class="${m.slide === state.slide ? 'is-current' : ''}">
+            <td class="media-slide">${m.slide}</td>
+            <td><div class="media-what"><svg class="ic"><use href="#i-${m.kind === 'audio' ? 'audio' : 'video'}"/></svg>
+              <span>${m.kind === 'audio' ? 'Audio' : 'Video'}<small title="${esc(m.name || '')}">${esc(m.name || '')}</small></span></div></td>
+            <td><span class="pill ${m.start === 'automatic' ? 'pill-auto' : ''}">${START_LABELS[m.start] || esc(m.start)}</span></td>
+            <td>${m.muted ? '<span class="pill pill-muted">Muted</span>' : '<span class="pill">On</span>'}</td>
+          </tr>`).join('')}</tbody></table>`;
+    }
+    $('#mediaDialog').showModal();
+  }
+  $('#mediaInfoBtn').addEventListener('click', showMediaList);
 
   function recentItem(r, { removable }) {
     const li = document.createElement('li');

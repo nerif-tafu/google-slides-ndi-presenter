@@ -34,7 +34,8 @@ public sealed record PresentationState(
     string? NdiError,
     string? NdiDiscovery,   // discovery server(s) the NDI outputs register with, or null for automatic discovery
     string? LiveError,
-    IReadOnlyList<RecentPresentation> Recent);
+    IReadOnlyList<RecentPresentation> Recent,
+    IReadOnlyList<SlideMedia> Media);   // video and audio on each slide, with how they start
 
 /// <summary>
 /// Owns the presentation state and pushes rendered frames to the two NDI senders.
@@ -179,7 +180,8 @@ public sealed class PresentationController : IDisposable
                 NdiError,
                 _ndiDiscovery,
                 _liveError,
-                _settings.Recent.ToList());
+                _settings.Recent.ToList(),
+                _presentation?.Media ?? []);
         }
     }
 
@@ -320,6 +322,8 @@ public sealed class PresentationController : IDisposable
                 _version++;
                 _thumbCache.Clear();
                 StartRevisionPollLocked(loaded.Id, loaded.Revision);
+                // The live player uses this to find the current slide's audio for Play/Pause/Rewind.
+                _live?.SetMedia(loaded.Media);
                 _settings.Recent.RemoveAll(r => r.Id == loaded.Id);
                 _settings.Recent.Insert(0, new RecentPresentation
                 {

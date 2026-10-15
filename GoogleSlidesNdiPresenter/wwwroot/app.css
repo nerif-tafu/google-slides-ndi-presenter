@@ -289,6 +289,26 @@ kbd {
 .title-block { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .title-block h1 { margin: 0 0 4px; font: 800 30px/1.1 var(--font-display); letter-spacing: -.025em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .meta { color: var(--text-2); font-size: 13px; }
+.title-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.title-row h1 { min-width: 0; }
+.info-btn { flex: none; color: var(--text-3); margin-top: 4px; }
+.info-btn:hover:not(:disabled) { color: var(--text); }
+
+/* Audio and video list */
+.media-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.media-table th { text-align: left; color: var(--text-3); font: 700 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; padding: 0 10px 10px; }
+.media-table td { padding: 10px; border-top: 1px solid var(--border); vertical-align: middle; }
+.media-table tr.is-current td { background: var(--accent-soft); }
+.media-table tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.media-slide { font-weight: 700; font-variant-numeric: tabular-nums; width: 64px; }
+.media-what { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.media-what .ic { color: var(--text-2); }
+.media-what span { display: flex; flex-direction: column; min-width: 0; }
+.media-what small { color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.pill-auto { background: var(--accent-soft); color: var(--accent-hover); }
+.pill-muted { background: rgba(251,191,36,.14); color: var(--warn); }
+.media-empty { margin: 4px 0 8px; color: var(--text-2); }
 .top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .chip .ic { width: 14px; height: 14px; }

@@ -8,7 +8,7 @@ using Windows.Storage.Streams;
 
 namespace GoogleSlidesNdiPresenter;
 
-public sealed record LoadedPresentation(string Id, string Title, IReadOnlyList<byte[]> SlidePngs, IReadOnlyList<string> Notes, long? Revision);
+public sealed record LoadedPresentation(string Id, string Title, IReadOnlyList<byte[]> SlidePngs, IReadOnlyList<string> Notes, long? Revision, IReadOnlyList<SlideMedia> Media);
 
 /// <summary>
 /// Downloads a Google Slides presentation without OAuth by using Google's export endpoints:
@@ -90,7 +90,7 @@ public static partial class PresentationLoader
             notes = Enumerable.Range(0, slides.Count)
                 .Select(i => i < notesInfo.Count ? notesInfo[i].Notes : "").ToList();
 
-        return new LoadedPresentation(id, string.IsNullOrWhiteSpace(title) ? "Untitled presentation" : title, slides, notes, page.Revision);
+        return new LoadedPresentation(id, string.IsNullOrWhiteSpace(title) ? "Untitled presentation" : title, slides, notes, page.Revision, page.Media);
     }
 
     private static async Task<byte[]> DownloadAsync(string url, byte[] magic, CancellationToken ct)
@@ -216,7 +216,7 @@ public static partial class PresentationLoader
     public static async Task<long?> FetchRevisionAsync(string id, CancellationToken ct = default) =>
         (await FetchPageInfoAsync(id, ct)).Revision;
 
-    private sealed record PageInfo(string? Title, long? Revision);
+    private sealed record PageInfo(string? Title, long? Revision, IReadOnlyList<SlideMedia> Media);
 
     /// <summary>
     /// Reads the presentation's normal page for its name (from the page title, "Name - Google Slides")
@@ -229,9 +229,9 @@ public static partial class PresentationLoader
             using var req = new HttpRequestMessage(HttpMethod.Get, $"https://docs.google.com/presentation/d/{id}/edit");
             req.Headers.AcceptLanguage.ParseAdd("en-US");
             using var resp = await Http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode) return new(null, null);
+            if (!resp.IsSuccessStatusCode) return new(null, null, []);
             var html = await resp.Content.ReadAsStringAsync(ct);
-            return new(ParseTitle(html), ParseRevision(html));
+            return new(ParseTitle(html), ParseRevision(html), SlideMediaParser.Parse(html));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -239,7 +239,7 @@ public static partial class PresentationLoader
         }
         catch
         {
-            return new(null, null);
+            return new(null, null, []);
         }
     }
 

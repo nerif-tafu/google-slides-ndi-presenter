@@ -40,7 +40,9 @@ Next and Previous behave like a clicker: Next plays the slide's next animation a
 
 Under the presenter view there's a text size control for the notes, an Auto-fit switch that makes each slide's notes as big as will fit, and buttons to scroll long notes.
 
-If a slide has a video, a Play button appears on the slide monitor, next to a button that takes the video back to the start. While the slide is making any sound, a small level meter shows on the right of the monitor.
+If a slide has a video or audio clip, a Play button appears on the slide monitor with how far through it is, next to a button that takes it back to the start. Audio set to play on click in Slides only starts when you press Play here. While the slide is making any sound, a small level meter shows on the right of the monitor.
+
+The (i) next to the deck's name lists every slide with video or audio: what it is, whether it starts automatically, on click or manually, and whether its sound is muted. It's worth a look before the show so nothing catches you out.
 
 If someone edits the deck in Google Slides while it's open, the app notices within about 30 seconds: the Refresh button gets an amber dot and a message pops up. Press Refresh to pull the changes in. You stay on the slide you were on. The app never refreshes by itself, so nothing changes on air until you decide. Close (Ctrl+W) puts both outputs back to a holding screen ("The presentation will begin shortly" on the slides feed). If you close by accident, the message that pops up has a Reopen button.
 
@@ -54,8 +56,8 @@ The app remembers recent decks, the last one you had open, your notes settings a
 | ← or PgUp | Previous |
 | Home / End | First / last slide |
 | A number, then Enter | Go to that slide |
-| P | Play or pause the video |
-| Shift+P | Video back to the start |
+| P | Play or pause the video or audio |
+| Shift+P | Video or audio back to the start |
 | + / − | Bigger / smaller notes |
 | A | Auto-fit notes on or off |
 | ↑ / ↓ | Scroll the notes |
@@ -111,7 +113,7 @@ The app listens on port 8080 by default. Every action takes a GET or a POST and 
 | `/api/load?url=...` | Open a presentation. You can also POST `{"url": "..."}` |
 | `/api/refresh` | Reload the open presentation |
 | `/api/close` | Close it and show the holding screen |
-| `/api/video/play`, `/pause`, `/toggle`, `/restart` | Control the video on the current slide |
+| `/api/video/play`, `/pause`, `/toggle`, `/restart` | Control the video or audio on the current slide |
 | `/api/notes/increase`, `/decrease` | Notes text 4px bigger / smaller |
 | `/api/notes/size/{px}` | Set the notes size (12 to 300) |
 | `/api/notes/autofit/on`, `/off`, `/toggle` | Auto-fit notes |

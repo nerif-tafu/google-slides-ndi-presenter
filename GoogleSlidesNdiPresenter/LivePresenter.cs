@@ -8,10 +8,12 @@ namespace GoogleSlidesNdiPresenter;
 public sealed record LiveFrame(string Base64Jpeg, int ContentHeight, int ViewportHeight);
 
 /// <summary>
-/// State of the video on the current slide. State is playing, paused, ended, buffering or ready;
-/// Quality is the YouTube quality level in use (e.g. "hd1080") and Best the highest available.
+/// State of the video or audio on the current slide. Kind is "video" or "audio"; State is playing,
+/// paused, ended, buffering or ready; Quality is the video's YouTube quality level (e.g. "hd1080")
+/// and Best the highest available; Position and Duration are in whole seconds.
 /// </summary>
-public sealed record VideoInfo(string State, string Quality, string Best, string Resolution, string Available, string PlayerSize);
+public sealed record VideoInfo(string State, string Quality, string Best, string Resolution, string Available, string PlayerSize,
+    string Kind = "video", int Position = 0, int Duration = 0);
 
 public enum VideoCommand { Play, Pause, Toggle, Restart }
 
@@ -82,7 +84,11 @@ public sealed class LivePresenter : IDisposable
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.AreDevToolsEnabled = false;
         core.WebMessageReceived += OnWebMessage;
-        core.NavigationCompleted += async (_, _) => await StartScreencastAsync();
+        core.NavigationCompleted += async (_, _) =>
+        {
+            await StartScreencastAsync();
+            _ = core.ExecuteScriptAsync($"window.__gs && __gs.setMedia({_mediaJson})");
+        };
         core.GetDevToolsProtocolEventReceiver("Page.screencastFrame").DevToolsProtocolEventReceived += OnScreencastFrame;
 
         await core.AddScriptToExecuteOnDocumentCreatedAsync(TrackerScript);
@@ -111,7 +117,21 @@ public sealed class LivePresenter : IDisposable
     public void Previous() => Run("window.__gs && __gs.key('ArrowLeft', 37)");
     public void GoTo(int slide) => Run($"window.__gs && __gs.goto({slide})");
 
-    /// <summary>Plays, pauses or toggles the video on the current slide.</summary>
+    private string _mediaJson = "{}";
+
+    /// <summary>
+    /// Tells the player which audio and video each slide has (pageId -> clips), so Play/Pause/Rewind
+    /// can find the current slide's audio. Kept and re-applied whenever the player reloads.
+    /// </summary>
+    public void SetMedia(IReadOnlyList<SlideMedia> media)
+    {
+        _mediaJson = JsonSerializer.Serialize(media
+            .GroupBy(m => m.PageId)
+            .ToDictionary(g => g.Key, g => g.Select(m => new { kind = m.Kind, fileId = m.FileId }).ToArray()));
+        Run($"window.__gs && __gs.setMedia({_mediaJson})");
+    }
+
+    /// <summary>Plays, pauses, toggles or rewinds the video or audio on the current slide.</summary>
     public void Video(VideoCommand command) => Run($"window.__gs && __gs.video('{command.ToString().ToLowerInvariant()}')");
 
     private void Run(string script) => OnUi(() => _ = _web.CoreWebView2?.ExecuteScriptAsync(script));
@@ -172,16 +192,20 @@ public sealed class LivePresenter : IDisposable
             }
             using var doc = JsonDocument.Parse(message);
             var root = doc.RootElement;
+            if (root.TryGetProperty("diag", out var diag))
+            {
+                // Audio capture diagnostics, written only when GSNDI_AUDIO_LOG names a file.
+                if (Environment.GetEnvironmentVariable("GSNDI_AUDIO_LOG") is { Length: > 0 } logPath)
+                    File.AppendAllText(logPath, $"{DateTime.Now:HH:mm:ss.fff} {diag.GetString()}{Environment.NewLine}");
+                return;
+            }
             if (root.TryGetProperty("video", out var v))
             {
+                string Text(string name) => v.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
+                int Number(string name) => v.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number ? (int)p.GetDouble() : 0;
                 VideoChanged?.Invoke(v.ValueKind == JsonValueKind.Object
-                    ? new VideoInfo(
-                        v.GetProperty("state").GetString() ?? "unknown",
-                        v.GetProperty("quality").GetString() ?? "",
-                        v.GetProperty("best").GetString() ?? "",
-                        v.GetProperty("resolution").GetString() ?? "",
-                        v.GetProperty("available").GetString() ?? "",
-                        v.GetProperty("size").GetString() ?? "")
+                    ? new VideoInfo(Text("state") is { Length: > 0 } st ? st : "unknown", Text("quality"), Text("best"), Text("resolution"),
+                        Text("available"), Text("size"), Text("kind") is { Length: > 0 } k ? k : "video", Number("position"), Number("duration"))
                     : null);
                 return;
             }
@@ -213,10 +237,32 @@ public sealed class LivePresenter : IDisposable
     /// </summary>
     private const string TrackerScript = """
         (() => {
-          // Audio tap (every frame): route each <video>/<audio> into Web Audio instead of the
-          // speakers and forward the samples to the app, which plays them on the chosen devices.
+          const diag = text => { try { window.top.postMessage({ gsAudioDiag: location.host + ': ' + text }, '*'); } catch (e) {} };
+
+          // Slides serves audio from another Google domain. Ask for it with CORS so the app can capture
+          // it: without CORS the browser silences cross-site audio once it's routed through Web Audio.
+          const googleHost = url => {
+            try { const h = new URL(url, location.href).host; return h !== location.host && /(^|\.)google(usercontent)?\.com$/.test(h); }
+            catch (e) { return false; }
+          };
+          const corsFor = (el, url) => {
+            if (el instanceof HTMLAudioElement && el.crossOrigin === null && el.dataset.gsDirect !== '1' && googleHost(url)) el.crossOrigin = 'anonymous';
+          };
+          const srcDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+          Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+            configurable: true, enumerable: srcDesc.enumerable, get: srcDesc.get,
+            set(v) { corsFor(this, v); srcDesc.set.call(this, v); },
+          });
+          const setAttr = Element.prototype.setAttribute;
+          Element.prototype.setAttribute = function (name, value) {
+            if (this instanceof HTMLMediaElement && String(name).toLowerCase() === 'src') corsFor(this, value);
+            return setAttr.call(this, name, value);
+          };
+
+          // Audio tap (every frame): route each <video>/<audio> into Web Audio instead of the speakers
+          // and forward the samples to the app, which plays them on the chosen devices.
           (() => {
-            let ctx = null, mix = null;
+            let ctx = null, mix = null, sent = 0;
             const tapped = new WeakSet();
             const toBase64 = f32 => {
               const u8 = new Uint8Array(f32.buffer);
@@ -239,19 +285,52 @@ public sealed class LivePresenter : IDisposable
                 const out = new Float32Array(L.length * 2);
                 for (let i = 0; i < L.length; i++) { out[2 * i] = L[i]; out[2 * i + 1] = R[i]; }
                 window.top.postMessage({ gsAudio: toBase64(out) }, '*');
+                sent++;
               };
+              diag('context ' + ctx.state + ' @' + ctx.sampleRate);
             };
+            // Reload a media element with or without CORS, keeping its position and play state.
+            const reload = (m, cors) => {
+              const t = m.currentTime, playing = !m.paused;
+              if (cors) m.crossOrigin = 'anonymous'; else m.removeAttribute('crossorigin');
+              m.load();
+              try { m.currentTime = t; } catch (e) {}
+              if (playing) m.play().catch(() => {});
+            };
+            // If CORS is refused (e.g. a private deck's audio), play it normally rather than not at all.
+            document.addEventListener('error', e => {
+              const m = e.target;
+              if (m instanceof HTMLAudioElement && m.crossOrigin && !tapped.has(m) && m.dataset.gsDirect !== '1') {
+                m.dataset.gsDirect = '1';
+                diag('CORS refused, playing directly: ' + (m.currentSrc || m.src).slice(0, 60));
+                reload(m, false);
+              }
+            }, true);
             setInterval(() => {
               for (const m of document.querySelectorAll('video, audio')) {
                 if (tapped.has(m)) continue;
+                if (m instanceof HTMLAudioElement) {
+                  if (m.dataset.gsDirect === '1') continue;
+                  const src = m.currentSrc || m.src;
+                  if (m.crossOrigin === null && src && googleHost(src)) { reload(m, true); continue; } // set before we could catch it
+                  // Only tap audio that has loaded with CORS; tapping anything else would make it go silent.
+                  if (src && googleHost(src) && (m.crossOrigin !== 'anonymous' || m.readyState < 1 || m.error)) continue;
+                  if (!src) continue;
+                }
                 tapped.add(m);
                 try {
                   if (!ctx) setup();
                   ctx.createMediaElementSource(m).connect(mix);
-                } catch (err) { /* already captured elsewhere */ }
+                  diag('tapped ' + m.tagName + ' ' + (m.currentSrc || m.src || '').slice(0, 60));
+                } catch (err) { diag('tap failed ' + m.tagName + ': ' + err); }
               }
               if (ctx && ctx.state === 'suspended') ctx.resume();
-            }, 500);
+            }, 250);
+            setInterval(() => {
+              const media = [...document.querySelectorAll('video, audio')];
+              if (ctx || media.length) diag('ctx=' + (ctx && ctx.state) + ' sent=' + sent + ' media=' + media.map(m => m.tagName + (m.paused ? ':paused' : ':playing') + (m.muted ? ':muted' : '') + (tapped.has(m) ? ':tapped' : '') + (m.dataset.gsDirect === '1' ? ':direct' : '')).join(','));
+              sent = 0;
+            }, 2000);
           })();
 
           if (window.top !== window) {
@@ -284,16 +363,20 @@ public sealed class LivePresenter : IDisposable
             const report = () => {
               const p = player(), v = media();
               if (!p && !v) return;
-              const state = p && p.getPlayerState
-                ? (names[p.getPlayerState()] || 'ready')
-                : (v.ended ? 'ended' : v.paused ? 'paused' : 'playing');
+              const yt = p && p.getPlayerState;
+              const state = yt ? (names[p.getPlayerState()] || 'ready') : (v.ended ? 'ended' : v.paused ? 'paused' : 'playing');
+              const position = yt && p.getCurrentTime ? p.getCurrentTime() : (v ? v.currentTime : 0);
+              const duration = yt && p.getDuration ? p.getDuration() : (v && isFinite(v.duration) ? v.duration : 0);
               window.top.postMessage({ gsVideoState: {
+                kind: 'video',
                 state,
                 quality: p && p.getPlaybackQuality ? p.getPlaybackQuality() : '',
                 best: p && p.getAvailableQualityLevels ? best(p) : '',
                 resolution: v && v.videoWidth ? v.videoWidth + 'x' + v.videoHeight : '',
                 available: p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels().join(',') : '',
                 size: Math.round(innerWidth) + 'x' + Math.round(innerHeight),
+                position: Math.floor(position || 0),
+                duration: Math.floor(duration || 0),
               } }, '*');
             };
             window.addEventListener('message', e => {
@@ -324,17 +407,55 @@ public sealed class LivePresenter : IDisposable
                 charCode: type === 'keypress' ? kc : 0, bubbles: true, cancelable: true }));
             }
           };
-          let video = null, videoAt = 0;
+
+          // Video players on other slides stay in the page, hidden. Only the visible one counts:
+          // audio and state from hidden ones are ignored, and they're paused when the slide changes
+          // (otherwise a video left playing keeps sending choppy audio, heard as a buzz).
+          const visibleFrames = () => [...document.querySelectorAll('iframe')].filter(f =>
+            f.checkVisibility ? f.checkVisibility({ visibilityProperty: true, opacityProperty: true }) : f.getClientRects().length > 0);
+          const fromVisible = src => src === window || visibleFrames().some(f => f.contentWindow === src);
+
+          let media = {}; // pageId -> [{ kind, fileId }], from the app (parsed from the deck)
+          let frameVideo = null, frameVideoAt = 0;
           window.addEventListener('message', e => {
-            if (!e.data) return;
-            if (e.data.gsVideoState) { video = e.data.gsVideoState; videoAt = Date.now(); }
-            else if (e.data.gsAudio) window.chrome.webview.postMessage('{"audio":"' + e.data.gsAudio + '"}');
+            const d = e.data;
+            if (!d) return;
+            if (d.gsVideoState) { if (fromVisible(e.source)) { frameVideo = d.gsVideoState; frameVideoAt = Date.now(); } }
+            else if (d.gsAudio) { if (fromVisible(e.source)) window.chrome.webview.postMessage('{"audio":"' + d.gsAudio + '"}'); }
+            else if (d.gsAudioDiag) window.chrome.webview.postMessage(JSON.stringify({ diag: d.gsAudioDiag }));
           });
+
+          const pageId = () => (new URLSearchParams(location.search).get('slide') || '').replace(/^id\./, '');
+          // The <audio> element for the current slide's audio (Slides keeps one per clip, shared by slides using the same file).
+          const slideAudio = () => {
+            const ids = (media[pageId()] || []).filter(m => m.kind === 'audio' && m.fileId).map(m => m.fileId);
+            if (!ids.length) return null;
+            const els = [...document.querySelectorAll('audio')].filter(a => ids.some(id => (a.currentSrc || a.src || '').includes(id)));
+            return els.find(a => !a.paused) || els[els.length - 1] || null;
+          };
+          const audioState = a => ({
+            kind: 'audio',
+            state: a.ended ? 'ended' : !a.paused ? 'playing' : a.currentTime > 0 ? 'paused' : 'ready',
+            quality: '', best: '', resolution: '', available: '', size: '',
+            position: Math.floor(a.currentTime || 0),
+            duration: isFinite(a.duration) ? Math.floor(a.duration) : 0,
+          });
+          const videoVisible = () => visibleFrames().length > 0 && Date.now() - frameVideoAt < 1500;
+
           window.__gs = {
             key,
             goto: n => { for (const ch of String(n)) key(ch, ch.charCodeAt(0)); key('Enter', 13); },
+            setMedia: m => { media = m || {}; },
             video: cmd => {
-              for (const f of document.querySelectorAll('iframe')) { try { f.contentWindow.postMessage({ gsVideo: cmd }, '*'); } catch (e) {} }
+              if (videoVisible()) {
+                for (const f of visibleFrames()) { try { f.contentWindow.postMessage({ gsVideo: cmd }, '*'); } catch (e) {} }
+                return;
+              }
+              const a = slideAudio();
+              if (!a) return;
+              if (cmd === 'restart') { a.currentTime = 0; return; }
+              const play = cmd === 'play' || (cmd === 'toggle' && a.paused);
+              if (play) a.play().catch(() => {}); else a.pause();
             },
           };
           document.addEventListener('DOMContentLoaded', () => {
@@ -342,10 +463,25 @@ public sealed class LivePresenter : IDisposable
             s.textContent = '*{cursor:none!important}';
             document.head.appendChild(s);
           });
-          let last = '', lastVideo = '';
+
+          let last = '', lastVideo = '', lastPage = '', shown = [];
           setInterval(() => {
-            // Video iframes only exist while their slide is showing; drop stale state once they go.
-            const v = document.querySelector('iframe') && Date.now() - videoAt < 1500 ? video : null;
+            const page = pageId();
+            if (page !== lastPage) {
+              lastPage = page;
+              // Pause the videos of the slide we just left, once they're hidden. Only those: a video
+              // on the new slide may still be loading in and about to start by itself.
+              const leaving = shown;
+              setTimeout(() => {
+                const visible = new Set(visibleFrames());
+                for (const f of leaving)
+                  if (!visible.has(f)) { try { f.contentWindow.postMessage({ gsVideo: 'pause' }, '*'); } catch (e) {} }
+              }, 400);
+            }
+            shown = visibleFrames();
+
+            let v = videoVisible() ? frameVideo : null;
+            if (!v) { const a = slideAudio(); if (a) v = audioState(a); }
             const vmsg = JSON.stringify({ video: v });
             if (vmsg !== lastVideo) { lastVideo = vmsg; window.chrome.webview.postMessage(vmsg); }
 

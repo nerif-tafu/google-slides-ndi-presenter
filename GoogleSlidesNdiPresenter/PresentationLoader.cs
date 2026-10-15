@@ -149,9 +149,12 @@ public static partial class PresentationLoader
     {
         using var resp = await Http.GetAsync(url, ct);
         if (resp.StatusCode is HttpStatusCode.NotFound)
-            throw new InvalidOperationException(Google?.SignedIn == true
-                ? "Presentation not found. Check the link, and that it's shared with " + AccountName() + "."
-                : "Presentation not found (404). Check the link.");
+        {
+            // Signed in, Google hides decks the account can't open behind a 404.
+            if (Google?.SignedIn == true)
+                throw new NoAccessException("Presentation not found. Check the link, and that it's shared with " + AccountName() + ".");
+            throw new InvalidOperationException("Presentation not found (404). Check the link.");
+        }
         if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             throw NoAccess();
         if (!resp.IsSuccessStatusCode)
@@ -166,7 +169,10 @@ public static partial class PresentationLoader
 
     private static string AccountName() => Google?.Email ?? "the Google account you're signed in with";
 
-    private static InvalidOperationException NoAccess() => new(Google?.SignedIn == true
+    /// <summary>The deck exists (or may) but the signed-in account, or anyone without signing in, can't open it.</summary>
+    public sealed class NoAccessException(string message) : InvalidOperationException(message);
+
+    private static NoAccessException NoAccess() => new(Google?.SignedIn == true
         ? $"{AccountName()} can't open this presentation. Ask the owner to share it with that account, " +
           "or to share it as \"Anyone with the link can view\"."
         : "This presentation isn't shared publicly. Share it as \"Anyone with the link can view\", " +

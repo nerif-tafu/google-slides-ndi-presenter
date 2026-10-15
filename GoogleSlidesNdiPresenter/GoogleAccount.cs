@@ -25,6 +25,7 @@ public sealed partial class GoogleAccount : PresentationLoader.IGoogleSession
     private CoreWebView2Environment? _env;
     private CoreWebView2Controller? _cookieHost; // hidden, only used for its cookie manager
     private SignInForm? _signIn;
+    private SignInForm? _page; // the "request access" window
     private volatile string? _email;
     private volatile bool _signedIn;
 
@@ -94,6 +95,39 @@ public sealed partial class GoogleAccount : PresentationLoader.IGoogleSession
         {
             _signIn.Dispose();
             _signIn = null;
+        }
+    });
+
+    /// <summary>
+    /// Opens Google's page for a presentation or Drive file in a window on the signed-in account, so
+    /// the user can press Google's own "Request access" button there (the request then comes from
+    /// the account the app uses, not whichever one their browser is signed in to). Returns an error
+    /// message, or null once the window is open.
+    /// </summary>
+    public Task<string?> ShowRequestAccessAsync(string url) => OnUiAsync(() =>
+    {
+        if (_env == null) return Task.FromResult<string?>("This needs the WebView2 runtime.");
+        try
+        {
+            if (_page is { IsDisposed: false })
+            {
+                _page.Open(url);
+                _page.Activate();
+            }
+            else
+            {
+                var page = new SignInForm(_env, _ui as Form, url, closeOnceSignedIn: false);
+                _page = page;
+                // Signing in on that page counts too.
+                page.FormClosed += async (_, _) => { _page = null; await RefreshStatusAsync(); };
+                page.Show(_ui as Form);
+            }
+            return Task.FromResult<string?>(null);
+        }
+        catch (Exception ex)
+        {
+            _page = null;
+            return Task.FromResult<string?>("Couldn't open Google's page: " + ex.Message);
         }
     });
 
@@ -179,26 +213,59 @@ public sealed partial class GoogleAccount : PresentationLoader.IGoogleSession
         return tcs.Task;
     }
 
-    /// <summary>A plain window showing Google's sign-in page. It closes itself once the user is signed in.</summary>
+    /// <summary>
+    /// A plain window showing a Google page in the app's Google profile: the sign-in page (closing
+    /// itself once the user is signed in), or a deck or file's page for requesting access.
+    /// </summary>
     private sealed class SignInForm : Form
     {
         private readonly TaskCompletionSource<string?> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
         private readonly CoreWebView2Environment _env;
+        private readonly bool _closeOnceSignedIn;
+        private string _url;
 
         public Task<string?> Result => _result.Task;
 
-        public SignInForm(CoreWebView2Environment env, Form? owner)
+        public SignInForm(CoreWebView2Environment env, Form? owner, string url = SignInUrl, bool closeOnceSignedIn = true)
         {
             _env = env;
-            Text = "Sign in to Google – Google Slides NDI Presenter";
+            _url = url;
+            _closeOnceSignedIn = closeOnceSignedIn;
+            Text = closeOnceSignedIn ? "Sign in to Google – Google Slides NDI Presenter" : "Request access – Google Slides NDI Presenter";
             Icon = owner?.Icon;
             StartPosition = owner == null ? FormStartPosition.CenterScreen : FormStartPosition.CenterParent;
-            ClientSize = new Size(520, 720);
+            ClientSize = closeOnceSignedIn ? new Size(520, 720) : new Size(960, 720);
             MinimumSize = new Size(420, 560);
             Controls.Add(_web);
             Shown += async (_, _) => await StartAsync();
             FormClosed += (_, _) => _result.TrySetResult(null);
+        }
+
+        /// <summary>
+        /// Google's "You need access" page defaults the requested role to Editor; the app only needs
+        /// to view, so pick Viewer (the first role) once the page has drawn it. Best effort: the user
+        /// can still change it, and nothing happens if the page looks different.
+        /// </summary>
+        private const string PickViewerScript = """
+            (() => {
+              let tries = 0;
+              const pick = () => {
+                const radios = [...document.querySelectorAll('input[type=radio], [role=radio]')];
+                if (radios.length >= 2) {
+                  const viewer = radios.find(r => /viewer/i.test((r.closest('label') || r.parentElement || r).textContent || r.getAttribute('aria-label') || '')) || radios[0];
+                  viewer.click();
+                } else if (++tries < 40) setTimeout(pick, 250);
+              };
+              pick();
+            })();
+            """;
+
+        /// <summary>Shows another page in this window.</summary>
+        public void Open(string url)
+        {
+            _url = url;
+            _web.CoreWebView2?.Navigate(url);
         }
 
         private async Task StartAsync()
@@ -209,7 +276,10 @@ public sealed partial class GoogleAccount : PresentationLoader.IGoogleSession
                 var core = _web.CoreWebView2;
                 core.Settings.AreDevToolsEnabled = false;
                 core.Settings.IsStatusBarEnabled = false;
-                core.DocumentTitleChanged += (_, _) => Text = core.DocumentTitle is { Length: > 0 } t ? t : Text;
+                if (_closeOnceSignedIn)
+                    core.DocumentTitleChanged += (_, _) => Text = core.DocumentTitle is { Length: > 0 } t ? t : Text;
+                else
+                    core.NavigationCompleted += (_, _) => _ = core.ExecuteScriptAsync(PickViewerScript);
                 // Help and privacy links open in the default browser rather than in a popup.
                 core.NewWindowRequested += (_, e) =>
                 {
@@ -223,13 +293,13 @@ public sealed partial class GoogleAccount : PresentationLoader.IGoogleSession
                 // Google sends you on to Slides once you're in; that's the cue to close.
                 core.SourceChanged += (_, _) =>
                 {
-                    if (core.Source.StartsWith(ServiceUrl, StringComparison.OrdinalIgnoreCase))
+                    if (_closeOnceSignedIn && core.Source.StartsWith(ServiceUrl, StringComparison.OrdinalIgnoreCase))
                     {
                         _result.TrySetResult(null);
                         Close();
                     }
                 };
-                core.Navigate(SignInUrl);
+                core.Navigate(_url);
             }
             catch (Exception ex)
             {

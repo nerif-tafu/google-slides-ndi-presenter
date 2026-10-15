@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -21,7 +22,7 @@ namespace GoogleSlidesNdiPresenter;
 /// (e.g. Bitfocus Companion, Stream Deck, scripts). Every action endpoint accepts GET or POST
 /// and returns the current state as JSON.
 /// </summary>
-public sealed class ApiServer : IAsyncDisposable
+public sealed partial class ApiServer : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -221,6 +222,23 @@ public sealed class ApiServer : IAsyncDisposable
             await google.SignOutAsync();
             return Results.Json(Account(), Json);
         });
+        // Opens Google's page for a deck or Drive file on the signed-in account, to press "Request access".
+        app.MapPost("/api/google/request-access", async (HttpContext ctx) =>
+        {
+            if (!Privileged(ctx)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var dto = await ctx.Request.ReadFromJsonAsync<RequestAccessDto>(Json);
+            if (dto?.Id is not { } id || !RequestAccessIdRegex().IsMatch(id))
+                return Results.BadRequest(new { error = "Missing or invalid id." });
+            var url = dto.Kind switch
+            {
+                "presentation" => $"https://docs.google.com/presentation/d/{id}/edit",
+                "file" => $"https://drive.google.com/file/d/{id}/view",
+                _ => null,
+            };
+            if (url == null) return Results.BadRequest(new { error = "Kind must be \"presentation\" or \"file\"." });
+            var error = await google.ShowRequestAccessAsync(url);
+            return error == null ? Results.Ok() : Results.Json(new { error }, Json, statusCode: StatusCodes.Status400BadRequest);
+        });
         app.MapPost("/api/app/restart", (HttpContext ctx) =>
         {
             if (!Privileged(ctx)) return Results.StatusCode(StatusCodes.Status403Forbidden);
@@ -358,6 +376,12 @@ public sealed class ApiServer : IAsyncDisposable
             await controller.LoadAsync(url);
             return Results.Json(controller.GetState(), Json);
         }
+        catch (PresentationLoader.NoAccessException ex)
+        {
+            // The UI offers to request access to the deck.
+            var id = url == null ? controller.GetState().PresentationId : PresentationLoader.ExtractId(url);
+            return Results.Json(new { error = ex.Message, code = "no-access", presentationId = id }, Json, statusCode: StatusCodes.Status502BadGateway);
+        }
         catch (Exception ex)
         {
             return Results.Json(new { error = ex.Message }, Json, statusCode: StatusCodes.Status502BadGateway);
@@ -396,6 +420,10 @@ public sealed class ApiServer : IAsyncDisposable
             .Distinct();
 
     private sealed record LoadRequest(string? Url);
+    private sealed record RequestAccessDto(string? Kind, string? Id);
+
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{10,100}$")]
+    private static partial Regex RequestAccessIdRegex();
 
     private sealed record AudioDto(string? OutputDevice, int OutputVolume, string? MonitorDevice, int MonitorVolume);
 

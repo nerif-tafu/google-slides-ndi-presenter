@@ -28,7 +28,11 @@
     const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     let data = null;
     try { data = await res.json(); } catch { /* empty body */ }
-    if (!res.ok || (data && data.error)) throw new Error((data && data.error) || `Request failed (${res.status})`);
+    if (!res.ok || (data && data.error)) {
+      const err = new Error((data && data.error) || `Request failed (${res.status})`);
+      err.data = data || {};
+      throw err;
+    }
     if (data && 'slideCount' in data) render(data);
     return data;
   }
@@ -116,7 +120,7 @@
     }
     $('#toasts').append(el);
     const dismiss = () => { el.classList.add('is-leaving'); setTimeout(() => el.remove(), 200); };
-    setTimeout(dismiss, kind === 'error' || action ? 8000 : 3500); // give time to use an action (e.g. Reopen)
+    setTimeout(dismiss, kind === 'error' && action ? 12000 : kind === 'error' || action ? 8000 : 3500); // give time to use an action (e.g. Reopen)
   }
 
   // ------------------------------------------------------------------ Rendering
@@ -258,7 +262,12 @@
   function accessPill(m) {
     switch (m.access) {
       case 'ok': return '<span class="pill">Can play</span>';
-      case 'no access': return `<span class="pill pill-bad" title="The ${m.kind} file in Google Drive isn’t shared with the Google account signed in here (or publicly), so it won’t play. Ask the owner to share it.">No access</span>`;
+      case 'no access': {
+        const why = `The ${m.kind} file in Google Drive isn’t shared with the Google account signed in here (or publicly), so it won’t play.`;
+        return isDesktop && m.fileId
+          ? `<button type="button" class="pill pill-bad pill-action" data-request-file="${esc(m.fileId)}" title="${why} Click to ask the owner for access.">No access<svg class="ic"><use href="#i-external"/></svg></button>`
+          : `<span class="pill pill-bad" title="${why} Ask the owner to share it.">No access</span>`;
+      }
       case 'private': return '<span class="pill pill-bad" title="This YouTube video is private or has been removed.">Unavailable</span>';
       case 'not embeddable': return '<span class="pill pill-bad" title="The owner of this YouTube video doesn’t allow it to be played in other sites.">Can’t embed</span>';
       default: return '<span class="pill" title="Couldn’t check this one.">Unknown</span>';
@@ -295,6 +304,10 @@
     $('#mediaDialog').showModal();
   }
   $('#mediaInfoBtn').addEventListener('click', showMediaList);
+  $('#mediaList').addEventListener('click', e => {
+    const b = e.target.closest('[data-request-file]');
+    if (b) requestAccess('file', b.dataset.requestFile);
+  });
 
   function recentItem(r, { removable }) {
     const li = document.createElement('li');
@@ -467,6 +480,23 @@
     if (state) renderRecents();
   }
 
+  // Opens Google's page for a deck ("presentation") or Drive file ("file") in a window on the app's
+  // Google account, where Google's own "Request access" button sends the request. Desktop only.
+  async function requestAccess(kind, id) {
+    try {
+      await api('/api/google/request-access', { body: { kind, id }, privileged: true });
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  // A failed load; when it's for lack of access, offers to request it.
+  function loadErrorToast(err, id) {
+    const presentationId = (err.data && err.data.presentationId) || id;
+    if (err.data && err.data.code === 'no-access' && isDesktop && presentationId)
+      toast(err.message, 'error', { label: 'Request access', run: () => requestAccess('presentation', presentationId) });
+    else
+      toast(err.message, 'error');
+  }
+
   async function openPresentation(url, title) {
     const parsed = parseSlidesUrl(url);
     if (parsed.error || parsed.empty) { toast(parsed.error || 'Paste a Google Slides link first.', 'error'); return false; }
@@ -483,7 +513,7 @@
       requestAnimationFrame(startStreams);
       return true;
     } catch (err) {
-      toast(err.message, 'error');
+      loadErrorToast(err, parsed.id);
       return false;
     } finally {
       if (isSwitch) setSwitching(null);
@@ -551,7 +581,7 @@
       await api('/api/refresh');
       toast('Presentation refreshed', 'ok');
     } catch (err) {
-      toast(err.message, 'error');
+      loadErrorToast(err, state.presentationId);
     } finally {
       setSwitching(null);
     }

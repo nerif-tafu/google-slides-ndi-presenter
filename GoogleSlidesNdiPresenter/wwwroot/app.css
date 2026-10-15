@@ -308,11 +308,17 @@ kbd {
 .media-what { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .media-what .ic { color: var(--text-2); }
 .media-what span { display: flex; flex-direction: column; min-width: 0; }
-.media-what small { color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.media-what small { color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+#mediaList { overflow-x: auto; }
 .pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
 .pill-auto { background: var(--accent-soft); color: var(--accent-hover); }
 .pill-muted { background: rgba(251,191,36,.14); color: var(--warn); }
 .pill-bad { background: rgba(248,113,113,.14); color: var(--danger); cursor: help; }
+/* "No access" that opens Google's request-access page. */
+.pill-action { gap: 5px; border: 0; font-family: inherit; cursor: pointer; transition: background .15s; }
+.pill-action .ic { width: 12px; height: 12px; }
+.pill-action:hover { background: rgba(248,113,113,.26); }
+.pill-action:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 .media-empty { margin: 4px 0 8px; color: var(--text-2); }
 .top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
@@ -438,7 +444,7 @@ kbd {
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 @keyframes fade { from { opacity: 0; } }
 .modal-card { width: 520px; max-width: 100%; background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-pop); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
-.modal-wide { width: 600px; }
+.modal-wide { width: 720px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; }
 .modal-head h2 { margin: 0; font: 700 19px/1.2 var(--font-display); }
 .modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 4px; }

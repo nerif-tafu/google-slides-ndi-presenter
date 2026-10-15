@@ -18,6 +18,8 @@ internal static class Program
             AppSettings.FilePath = Path.GetFullPath(args[i + 1]);
 
         var settings = AppSettings.Load();
+        var google = new GoogleAccount();
+        PresentationLoader.Google = google;
         var controller = new PresentationController(settings);
         var audio = new AudioRouter();
         audio.Configure(settings.AudioOutputDevice, settings.AudioOutputVolume, settings.AudioMonitorDevice, settings.AudioMonitorVolume);
@@ -25,7 +27,7 @@ internal static class Program
         ApiServer api;
         try
         {
-            api = ApiServer.StartAsync(controller, settings, audio, () =>
+            api = ApiServer.StartAsync(controller, settings, audio, google, () =>
             {
                 _restartRequested = true;
                 form?.BeginInvoke(form.Close);
@@ -40,7 +42,7 @@ internal static class Program
             return;
         }
 
-        Application.Run(form = new MainForm(controller, settings, api, audio));
+        Application.Run(form = new MainForm(controller, settings, api, audio, google));
 
         settings.Save();
         api.DisposeAsync().AsTask().GetAwaiter().GetResult();

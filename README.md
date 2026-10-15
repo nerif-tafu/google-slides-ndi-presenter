@@ -14,7 +14,7 @@ You drive it from the app window, the keyboard, a presentation clicker, a phone 
 - The Microsoft Edge WebView2 runtime. Windows 11 already has it.
 - The [.NET 9 SDK](https://dotnet.microsoft.com/download) if you're building from source.
 
-The deck has to be shared as "Anyone with the link can view". The app downloads it the same way a logged-out visitor would, so there's no Google sign-in.
+The simplest setup is a deck shared as "Anyone with the link can view", which works without signing in. For decks that are only shared with particular people, sign in to a Google account that can open them (see [Private decks](#private-decks)).
 
 ## Download
 
@@ -68,6 +68,14 @@ The app remembers recent decks, the last one you had open, your notes settings a
 ### From a phone or tablet
 
 The sidebar shows one or more addresses under Remote control. Open one in a browser on any device on the same network and you get the same controls, laid out for a small screen. Settings can only be changed on the PC running the app.
+
+## Private decks
+
+If a deck isn't shared as "Anyone with the link", go to Settings → Google account and press Sign in. A small window opens with Google's normal sign-in page. Sign in there with an account that can open the deck, and the window closes on its own once you're in. After that, decks shared with that account open the same way as public ones, with notes, previews, animations and video. Public decks keep working whether you're signed in or not.
+
+One account is signed in at a time. Sign out from the same place. If a deck won't open, the app tells you whether it isn't shared publicly (sign in) or isn't shared with the account you're signed in with (ask the owner to share it).
+
+The app doesn't keep a password or token of its own. Your Google session lives in the app's built-in browser, in its own profile, the same way a browser remembers you. Windows encrypts it for your user account. Signing in and out can only be done in the app window, never from a phone or over the API. A second copy started with `--settings` has its own sign-in.
 
 ## Audio
 
@@ -138,7 +146,7 @@ Bump `<Version>` in `GoogleSlidesNdiPresenter.csproj`, then publish a release on
 ## Known limitations
 
 - "Publish to web" links (the ones with `/d/e/` in them) can't be used. Use the share link instead.
-- Private decks won't work.
+- Google's sign-in page can refuse to work inside apps. If it ever does, share the deck as "Anyone with the link can view" instead.
 - The next-slide preview shows the slide as it looks once all its animations have played.
 - The slides feed goes through JPEG compression on the way out of the browser, so very fine detail can soften slightly.
 - Audio runs about a tenth of a second behind the picture.

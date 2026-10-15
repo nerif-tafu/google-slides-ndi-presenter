@@ -547,6 +547,7 @@
       form.remoteAccess.checked = s.remoteAccess;
       form.apiPort.value = s.apiPort;
       await fillAudio(form, s);
+      await fillGoogle();
     } catch { toast('Couldn’t load settings.', 'error'); return; }
     $('#settingsDialog').showModal();
     form.slidesNdiName.focus();
@@ -602,6 +603,39 @@
   }
   for (const name of ['audioOutputDevice', 'audioMonitorDevice', 'audioOutputVolume', 'audioMonitorVolume'])
     $('#settingsForm')[name].addEventListener('input', saveAudio);
+
+  // The Google account (desktop only) signs in through its own window and applies straight away.
+  let google = { signedIn: false, email: null };
+  function renderGoogle() {
+    const row = $('#googleGroup .account-row');
+    row.classList.toggle('is-signed-in', google.signedIn);
+    $('#googleName').textContent = google.signedIn ? (google.email || 'Signed in') : 'Not signed in';
+    $('#googleHint').hidden = google.signedIn;
+    $('#googleAvatar').textContent = google.signedIn && google.email ? google.email[0] : 'G';
+    $('#googleBtn').textContent = google.signedIn ? 'Sign out' : 'Sign in';
+  }
+  async function fillGoogle() {
+    $('#googleError').textContent = '';
+    try { google = await api('/api/google', { method: 'GET', privileged: true }); }
+    catch { google = { signedIn: false, email: null }; }
+    renderGoogle();
+  }
+  $('#googleBtn').addEventListener('click', async () => {
+    const btn = $('#googleBtn');
+    const signingIn = !google.signedIn;
+    btn.disabled = true;
+    $('#googleError').textContent = '';
+    if (signingIn) btn.textContent = 'Waiting for sign-in…';
+    try {
+      google = await api(signingIn ? '/api/google/signin' : '/api/google/signout', { privileged: true });
+      toast(signingIn ? `Signed in${google.email ? ` as ${google.email}` : ''}.` : 'Signed out of Google.', 'ok');
+    } catch (err) {
+      $('#googleError').textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      renderGoogle();
+    }
+  });
 
   // ------------------------------------------------------------------ Audio meter
 

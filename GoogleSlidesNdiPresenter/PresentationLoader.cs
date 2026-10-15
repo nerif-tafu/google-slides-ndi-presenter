@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -12,10 +13,12 @@ public sealed record LoadedPresentation(string Id, string Title, IReadOnlyList<b
 /// <summary>
 /// Downloads a Google Slides presentation without OAuth by using Google's export endpoints:
 /// the PDF export provides the slide images and the PPTX export provides the speaker notes.
-/// The presentation must be shared as "Anyone with the link can view".
+/// The presentation must be shared as "Anyone with the link can view", or with the Google
+/// account signed in through <see cref="Google"/>, whose cookies are then sent along.
 /// </summary>
 public static partial class PresentationLoader
 {
+    private static readonly GoogleCookieHandler Cookies = new();
     private static readonly HttpClient Http = CreateClient();
 
     private static readonly XNamespace P = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -23,9 +26,19 @@ public static partial class PresentationLoader
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly XNamespace Rel = "http://schemas.openxmlformats.org/package/2006/relationships";
 
+    /// <summary>The signed-in Google account, if the app has one.</summary>
+    public interface IGoogleSession
+    {
+        bool SignedIn { get; }
+        string? Email { get; }
+        Task<IReadOnlyList<Cookie>> GetCookiesAsync();
+    }
+
+    public static IGoogleSession? Google { get; set; }
+
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+        var client = new HttpClient(Cookies) { Timeout = TimeSpan.FromSeconds(120) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) GoogleSlidesNdiPresenter/1.0");
         return client;
     }
@@ -53,6 +66,7 @@ public static partial class PresentationLoader
             "That doesn't look like a Google Slides link. Use the normal share link " +
             "(https://docs.google.com/presentation/d/<id>/edit).");
 
+        await Cookies.SyncAsync(Google);
         var baseUrl = $"https://docs.google.com/presentation/d/{id}/export";
         var pageTask = FetchPageInfoAsync(id, ct);
         var pdfTask = DownloadAsync($"{baseUrl}/pdf", "%PDF"u8.ToArray(), ct);
@@ -82,19 +96,78 @@ public static partial class PresentationLoader
     private static async Task<byte[]> DownloadAsync(string url, byte[] magic, CancellationToken ct)
     {
         using var resp = await Http.GetAsync(url, ct);
-        if (resp.StatusCode is System.Net.HttpStatusCode.NotFound)
-            throw new InvalidOperationException("Presentation not found (404). Check the URL.");
+        if (resp.StatusCode is HttpStatusCode.NotFound)
+            throw new InvalidOperationException(Google?.SignedIn == true
+                ? "Presentation not found. Check the link, and that it's shared with " + AccountName() + "."
+                : "Presentation not found (404). Check the link.");
+        if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            throw NoAccess();
         if (!resp.IsSuccessStatusCode)
-            throw new InvalidOperationException(
-                $"Google returned {(int)resp.StatusCode} {resp.ReasonPhrase}. " +
-                "Make sure the presentation is shared as \"Anyone with the link can view\".");
+            throw new InvalidOperationException($"Google returned {(int)resp.StatusCode} {resp.ReasonPhrase}. Try again in a moment.");
 
+        // Without access Google answers with a sign-in or "request access" page instead of the file.
         var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
         if (bytes.Length < magic.Length || !bytes.AsSpan(0, magic.Length).SequenceEqual(magic))
-            throw new InvalidOperationException(
-                "Google didn't return the presentation (probably a sign-in page). " +
-                "Share the presentation as \"Anyone with the link can view\".");
+            throw NoAccess();
         return bytes;
+    }
+
+    private static string AccountName() => Google?.Email ?? "the Google account you're signed in with";
+
+    private static InvalidOperationException NoAccess() => new(Google?.SignedIn == true
+        ? $"{AccountName()} can't open this presentation. Ask the owner to share it with that account, " +
+          "or to share it as \"Anyone with the link can view\"."
+        : "This presentation isn't shared publicly. Share it as \"Anyone with the link can view\", " +
+          "or sign in to a Google account that can open it (Settings → Google account).");
+
+    /// <summary>
+    /// Sends the signed-in account's Google cookies with every request, redirects included.
+    /// Redirects are followed here so the cookie jar can be swapped between loads (sign in/out).
+    /// </summary>
+    private sealed class GoogleCookieHandler() : DelegatingHandler(new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = false })
+    {
+        private volatile CookieContainer _jar = new();
+
+        public async Task SyncAsync(IGoogleSession? session)
+        {
+            var jar = new CookieContainer();
+            if (session?.SignedIn == true)
+            {
+                foreach (var c in await session.GetCookiesAsync())
+                {
+                    try { jar.Add(c); } catch (CookieException) { /* skip odd cookies */ }
+                }
+            }
+            _jar = jar;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            for (var hop = 0; ; hop++)
+            {
+                var jar = _jar;
+                var uri = request.RequestUri!;
+                request.Headers.Remove("Cookie");
+                if (jar.GetCookieHeader(uri) is { Length: > 0 } header) request.Headers.Add("Cookie", header);
+
+                var resp = await base.SendAsync(request, ct);
+                if (resp.Headers.TryGetValues("Set-Cookie", out var setCookies))
+                {
+                    foreach (var sc in setCookies)
+                    {
+                        try { jar.SetCookies(uri, sc); } catch (CookieException) { /* ignore */ }
+                    }
+                }
+
+                var status = (int)resp.StatusCode;
+                if (status is not (301 or 302 or 303 or 307 or 308) || resp.Headers.Location is not { } location || hop >= 10)
+                    return resp;
+                resp.Dispose();
+                var next = new HttpRequestMessage(status == 303 ? HttpMethod.Get : request.Method, new Uri(uri, location));
+                foreach (var h in request.Headers.Where(h => h.Key != "Cookie")) next.Headers.TryAddWithoutValidation(h.Key, h.Value);
+                request = next;
+            }
+        }
     }
 
     private static async Task<List<byte[]>> RenderPdfAsync(byte[] pdf, int width, int height)

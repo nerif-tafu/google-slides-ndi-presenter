@@ -74,7 +74,8 @@ public sealed class LivePresenter : IDisposable
     private async Task InitializeAsync()
     {
         var env = await WebViewEnvironment.GetAsync();
-        await _web.EnsureCoreWebView2Async(env);
+        // The Google profile, so decks shared with the signed-in account play too.
+        await _web.EnsureCoreWebView2Async(env, GoogleAccount.ControllerOptions(env));
 
         var core = _web.CoreWebView2;
         core.Settings.AreDefaultContextMenusEnabled = false;

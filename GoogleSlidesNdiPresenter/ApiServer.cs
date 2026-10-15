@@ -51,23 +51,23 @@ public sealed class ApiServer : IAsyncDisposable
         Warning = warning;
     }
 
-    public static async Task<ApiServer> StartAsync(PresentationController controller, AppSettings settings, AudioRouter audio, Action requestRestart)
+    public static async Task<ApiServer> StartAsync(PresentationController controller, AppSettings settings, AudioRouter audio, GoogleAccount google, Action requestRestart)
     {
         var host = settings.RemoteAccess ? "0.0.0.0" : "127.0.0.1";
         try
         {
-            return await StartOnAsync(controller, settings, audio, requestRestart, $"http://{host}:{settings.ApiPort}", settings.RemoteAccess, null);
+            return await StartOnAsync(controller, settings, audio, google, requestRestart, $"http://{host}:{settings.ApiPort}", settings.RemoteAccess, null);
         }
         catch (Exception ex) when (ex is IOException or SocketException || ex.InnerException is SocketException)
         {
             // Keep the UI working on a random local port; remote control is unavailable.
-            return await StartOnAsync(controller, settings, audio, requestRestart, "http://127.0.0.1:0", false,
+            return await StartOnAsync(controller, settings, audio, google, requestRestart, "http://127.0.0.1:0", false,
                 $"Port {settings.ApiPort} is already in use, so remote control is off. Pick another port in Settings.");
         }
     }
 
     private static async Task<ApiServer> StartOnAsync(
-        PresentationController controller, AppSettings settings, AudioRouter audio, Action requestRestart,
+        PresentationController controller, AppSettings settings, AudioRouter audio, GoogleAccount google, Action requestRestart,
         string url, bool remote, string? warning)
     {
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { ContentRootPath = AppContext.BaseDirectory });
@@ -204,6 +204,22 @@ public sealed class ApiServer : IAsyncDisposable
             dto.ApplyTo(settings);
             settings.Save();
             return Results.Json(new { saved = true, restartRequired = true }, Json);
+        });
+        // The Google account is desktop-only: remotes can't see who's signed in or change it.
+        object Account() => new { signedIn = google.SignedIn, email = google.Email };
+        app.MapGet("/api/google", (HttpContext ctx) =>
+            Privileged(ctx) ? Results.Json(Account(), Json) : Results.StatusCode(StatusCodes.Status403Forbidden));
+        app.MapPost("/api/google/signin", async (HttpContext ctx) =>
+        {
+            if (!Privileged(ctx)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var error = await google.SignInAsync();
+            return error == null ? Results.Json(Account(), Json) : Results.Json(new { error }, Json, statusCode: StatusCodes.Status400BadRequest);
+        });
+        app.MapPost("/api/google/signout", async (HttpContext ctx) =>
+        {
+            if (!Privileged(ctx)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            await google.SignOutAsync();
+            return Results.Json(Account(), Json);
         });
         app.MapPost("/api/app/restart", (HttpContext ctx) =>
         {

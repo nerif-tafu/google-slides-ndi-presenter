@@ -437,6 +437,13 @@ kbd {
 .switch-input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
 .switch-input:checked { background: var(--accent); }
 .switch-input:checked::after { transform: translateX(16px); }
+.account-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg); border-radius: var(--r-md); }
+.account-avatar { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); font: 700 13px/1 var(--font-display); text-transform: uppercase; }
+.account-row.is-signed-in .account-avatar { background: var(--accent-soft); color: var(--accent-hover); }
+.account-text { flex: 1; min-width: 0; }
+.account-text strong { display: block; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-text small { color: var(--text-3); font-size: 12px; }
+#googleError:not(:empty) { margin: 8px 0 0; }
 .audio-row { display: flex; gap: 12px; align-items: flex-end; }
 .audio-row .field { flex: 1.6; }
 .audio-row .field-volume { flex: 1; }

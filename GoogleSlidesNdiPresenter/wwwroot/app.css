@@ -106,6 +106,16 @@ kbd {
 .btn-sm.btn-icon { width: 32px; }
 .btn .kbd-hint { margin-left: auto; background: rgba(255,255,255,.14); border: 0; color: rgba(255,255,255,.85); height: 20px; font-size: 10.5px; }
 .btn.is-busy .ic { animation: spin .8s linear infinite; }
+/* Refresh button when the deck has been edited in Google Slides since it was loaded */
+.update-dot { display: none; }
+.btn.has-update { position: relative; color: var(--warn); box-shadow: inset 0 0 0 1px rgba(251,191,36,.45); }
+.btn.has-update .update-dot {
+  display: block; position: absolute; top: -3px; right: -3px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--warn); box-shadow: 0 0 0 2px var(--panel);
+  animation: update-pulse 2s var(--ease) infinite;
+}
+@keyframes update-pulse { 50% { box-shadow: 0 0 0 2px var(--panel), 0 0 0 6px rgba(251,191,36,.25); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- App layout ---------- */

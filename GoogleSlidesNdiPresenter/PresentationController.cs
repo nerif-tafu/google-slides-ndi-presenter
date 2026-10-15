@@ -8,6 +8,9 @@ public sealed record PresentationState(
     string? PresentationId,
     string? Title,
     long Version,       // increments on every successful load (cache-busts slide thumbnails)
+    long? LoadedRevision,   // Google's revision number of the deck as loaded (null if unknown)
+    long? LatestRevision,   // newest revision seen while polling Google every 30 s
+    bool OutOfDate,         // the deck has been edited in Google Slides since it was loaded
     int ThumbnailCount, // slides with a thumbnail available (/api/slides/{n}.jpg)
     int Slide,          // 1-based, 0 when nothing is loaded
     int SlideCount,
@@ -45,6 +48,7 @@ public sealed class PresentationController : IDisposable
     public const float MaxFontSize = 300;
     public const float FontStep = 4;
     private const float ScrollLines = 3;
+    private static readonly TimeSpan RevisionPollInterval = TimeSpan.FromSeconds(30);
 
     private readonly object _lock = new();
     private readonly SemaphoreSlim _loadGate = new(1, 1);
@@ -81,6 +85,9 @@ public sealed class PresentationController : IDisposable
     // Starts from the clock so thumbnail URLs (cached by the browser) never repeat across runs.
     private long _version = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
     private string? _liveError;
+    private long? _loadedRevision;
+    private long? _latestRevision;
+    private CancellationTokenSource? _revisionPoll;
     private readonly Dictionary<(int Index, int Width), byte[]> _thumbCache = new();
 
     public event Action? StateChanged;
@@ -146,6 +153,9 @@ public sealed class PresentationController : IDisposable
                 _presentation?.Id,
                 _presentation?.Title,
                 _version,
+                _loadedRevision,
+                _latestRevision,
+                OutOfDateLocked,
                 _presentation?.SlidePngs.Count ?? 0,
                 count > 0 ? _index + 1 : 0,
                 count,
@@ -216,6 +226,7 @@ public sealed class PresentationController : IDisposable
                 _liveCount = 0;
                 _liveSlideParam = null;
                 _status = "Ready";
+                StopRevisionPollLocked();
                 _version++;
                 _thumbCache.Clear();
                 InvalidateNotes();
@@ -308,6 +319,7 @@ public sealed class PresentationController : IDisposable
                 _status = $"Loaded {loaded.SlidePngs.Count} slides at {DateTime.Now:HH:mm:ss}";
                 _version++;
                 _thumbCache.Clear();
+                StartRevisionPollLocked(loaded.Id, loaded.Revision);
                 _settings.Recent.RemoveAll(r => r.Id == loaded.Id);
                 _settings.Recent.Insert(0, new RecentPresentation
                 {
@@ -562,11 +574,77 @@ public sealed class PresentationController : IDisposable
         Interlocked.Increment(ref _frameVersion);
     }
 
+    private bool OutOfDateLocked => _latestRevision > _loadedRevision;
+
+    // Caller must hold _lock.
+    private void StartRevisionPollLocked(string id, long? revision)
+    {
+        StopRevisionPollLocked();
+        _loadedRevision = revision;
+        _latestRevision = revision;
+        var cts = new CancellationTokenSource();
+        _revisionPoll = cts;
+        _ = PollRevisionAsync(id, cts);
+    }
+
+    // Caller must hold _lock.
+    private void StopRevisionPollLocked()
+    {
+        _revisionPoll?.Cancel();
+        _revisionPoll?.Dispose();
+        _revisionPoll = null;
+        _loadedRevision = null;
+        _latestRevision = null;
+    }
+
+    /// <summary>
+    /// Checks the open deck's revision every 30 s so the operator can see when it was edited in
+    /// Google Slides. It never refreshes by itself; that stays the operator's call.
+    /// </summary>
+    private async Task PollRevisionAsync(string id, CancellationTokenSource cts)
+    {
+        var ct = cts.Token;
+        try
+        {
+            using var timer = new PeriodicTimer(RevisionPollInterval);
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var revision = await PresentationLoader.FetchRevisionAsync(id, ct);
+                if (revision == null) continue; // offline or Google hiccup: try again next time
+
+                bool changed;
+                lock (_lock)
+                {
+                    if (_revisionPoll != cts) return; // deck closed or reloaded meanwhile
+                    if (_loadedRevision == null)
+                    {
+                        // Couldn't read it at load time: start from here.
+                        _loadedRevision = _latestRevision = revision;
+                        changed = true;
+                    }
+                    else
+                    {
+                        changed = revision > _latestRevision;
+                        if (changed) _latestRevision = revision;
+                    }
+                }
+                if (changed) OnChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     private void OnChanged() => StateChanged?.Invoke();
 
     public void Dispose()
     {
         _liveFrames.Writer.TryComplete();
+        lock (_lock) StopRevisionPollLocked();
         _slidesSender?.Dispose();
         _notesSender?.Dispose();
         lock (_lock)

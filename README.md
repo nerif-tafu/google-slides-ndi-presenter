@@ -42,7 +42,7 @@ Under the presenter view there's a text size control for the notes, an Auto-fit 
 
 If a slide has a video, a Play button appears on the slide monitor, next to a button that takes the video back to the start. While the slide is making any sound, a small level meter shows on the right of the monitor.
 
-If you edit the deck in Google Slides while it's open, press Refresh to pull the changes in. You stay on the slide you were on. Close (Ctrl+W) puts both outputs back to a holding screen ("The presentation will begin shortly" on the slides feed). If you close by accident, the message that pops up has a Reopen button.
+If someone edits the deck in Google Slides while it's open, the app notices within about 30 seconds: the Refresh button gets an amber dot and a message pops up. Press Refresh to pull the changes in. You stay on the slide you were on. The app never refreshes by itself, so nothing changes on air until you decide. Close (Ctrl+W) puts both outputs back to a holding screen ("The presentation will begin shortly" on the slides feed). If you close by accident, the message that pops up has a Reopen button.
 
 The app remembers recent decks, the last one you had open, your notes settings and the window position.
 
@@ -111,6 +111,8 @@ The app listens on port 8080 by default. Every action takes a GET or a POST and 
 | `GET /api/state` | The current state |
 | `GET /api/preview/slide.png`, `/notes.png` | A still of each output |
 
+The state includes `outOfDate`, which is true when the deck has been edited in Google Slides since it was opened or last refreshed.
+
 Some of what the app's own interface uses could also be handy elsewhere: `/api/events` (state as Server-Sent Events), `/api/meter` (audio levels), `/api/stream/slide.mjpg` and `/notes.mjpg` (live previews), and `/api/slides/{n}.jpg` (slide thumbnails).
 
 There's no password on the API. If you're on a network you don't trust, turn off "Allow other devices" in Settings and only this PC will be able to control the app. Windows may ask about the firewall the first time it runs. If port 8080 is taken, the app still works, but remote control stays off until you choose another port.
@@ -120,6 +122,8 @@ There's no password on the API. If you're on a network you don't trust, turn off
 The slides feed is Google's own embedded Slides player running in a hidden browser (WebView2). The app records its screen with the Chrome DevTools screencast API and sends each frame over NDI. That's why animations and video look the same as they do in Slides.
 
 Speaker notes and the next-slide previews come from Google's PowerPoint and PDF exports of the deck. They're downloaded when you open it and again when you refresh.
+
+Google keeps a revision number for every deck that goes up each time it's edited. While a deck is open, the app reads it from the deck's page every 30 seconds, and if it's higher than when you opened or refreshed the deck, the deck is out of date.
 
 Videos are locked to the best quality Google offers for them. Google sets that limit, though; the Drive video in the test deck, for example, only goes up to 720p.
 

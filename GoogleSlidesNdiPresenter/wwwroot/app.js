@@ -141,6 +141,7 @@
       b.disabled = s.loading;
     }
     $('#refreshBtn').classList.toggle('is-busy', s.loading);
+    renderOutOfDate(s);
 
     // Header
     const title = s.title || (s.loading ? 'Loading…' : 'Untitled presentation');
@@ -188,6 +189,21 @@
     $('#autoBtn').setAttribute('aria-checked', String(s.notesAutoFit));
     $('#scrollUpBtn').disabled = s.notesScroll <= 0;
     $('#scrollDownBtn').disabled = s.notesScroll >= s.notesMaxScroll - 0.5;
+  }
+
+  // Shown once each time the open deck goes out of date, so it doesn't nag after every edit.
+  let outOfDateToasted = '';
+
+  function renderOutOfDate(s) {
+    const btn = $('#refreshBtn');
+    const stale = s.outOfDate && !s.loading;
+    btn.classList.toggle('has-update', stale);
+    btn.title = stale ? 'Updated in Google Slides — refresh to load the changes (R)' : 'Reload the presentation (R)';
+    const key = stale ? `${s.presentationId}@${s.loadedRevision}` : '';
+    if (key && key !== outOfDateToasted) {
+      toast('This presentation has been updated in Google Slides.', 'info', { label: 'Refresh', run: refresh });
+    }
+    if (!s.loading) outOfDateToasted = key;
   }
 
   function renderOutput(el, name, receivers, error) {

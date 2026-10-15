@@ -7,7 +7,7 @@ using Windows.Storage.Streams;
 
 namespace GoogleSlidesNdiPresenter;
 
-public sealed record LoadedPresentation(string Id, string Title, IReadOnlyList<byte[]> SlidePngs, IReadOnlyList<string> Notes);
+public sealed record LoadedPresentation(string Id, string Title, IReadOnlyList<byte[]> SlidePngs, IReadOnlyList<string> Notes, long? Revision);
 
 /// <summary>
 /// Downloads a Google Slides presentation without OAuth by using Google's export endpoints:
@@ -54,14 +54,15 @@ public static partial class PresentationLoader
             "(https://docs.google.com/presentation/d/<id>/edit).");
 
         var baseUrl = $"https://docs.google.com/presentation/d/{id}/export";
-        var titleTask = FetchTitleAsync(id, ct);
+        var pageTask = FetchPageInfoAsync(id, ct);
         var pdfTask = DownloadAsync($"{baseUrl}/pdf", "%PDF"u8.ToArray(), ct);
         var pptxTask = DownloadAsync($"{baseUrl}/pptx", "PK"u8.ToArray(), ct);
         await Task.WhenAll(pdfTask, pptxTask);
 
         var slides = await RenderPdfAsync(pdfTask.Result, width, height);
         var notesInfo = ParsePptxNotes(pptxTask.Result);
-        var title = await titleTask ?? ParsePptxTitle(pptxTask.Result);
+        var page = await pageTask;
+        var title = page.Title ?? ParsePptxTitle(pptxTask.Result);
 
         // Align notes to rendered pages. Depending on Google's export, skipped slides may or may
         // not appear in the PDF, so match whichever count lines up.
@@ -75,7 +76,7 @@ public static partial class PresentationLoader
             notes = Enumerable.Range(0, slides.Count)
                 .Select(i => i < notesInfo.Count ? notesInfo[i].Notes : "").ToList();
 
-        return new LoadedPresentation(id, string.IsNullOrWhiteSpace(title) ? "Untitled presentation" : title, slides, notes);
+        return new LoadedPresentation(id, string.IsNullOrWhiteSpace(title) ? "Untitled presentation" : title, slides, notes, page.Revision);
     }
 
     private static async Task<byte[]> DownloadAsync(string url, byte[] magic, CancellationToken ct)
@@ -132,28 +133,61 @@ public static partial class PresentationLoader
     [GeneratedRegex(@"<title>(.*?)</title>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex TitleRegex();
 
-    /// <summary>The presentation's name, from its page title ("Name - Google Slides").</summary>
-    private static async Task<string?> FetchTitleAsync(string id, CancellationToken ct)
+    [GeneratedRegex(@"""revision"":(\d+)")]
+    private static partial Regex RevisionRegex();
+
+    /// <summary>
+    /// The deck's current revision number, which Google bumps on every edit. Null if the page
+    /// couldn't be read. Used to spot decks that changed since they were loaded.
+    /// </summary>
+    public static async Task<long?> FetchRevisionAsync(string id, CancellationToken ct = default) =>
+        (await FetchPageInfoAsync(id, ct)).Revision;
+
+    private sealed record PageInfo(string? Title, long? Revision);
+
+    /// <summary>
+    /// Reads the presentation's normal page for its name (from the page title, "Name - Google Slides")
+    /// and its revision number (the page embeds "revision":N in its model data).
+    /// </summary>
+    private static async Task<PageInfo> FetchPageInfoAsync(string id, CancellationToken ct)
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"https://docs.google.com/presentation/d/{id}/edit");
             req.Headers.AcceptLanguage.ParseAdd("en-US");
             using var resp = await Http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode) return new(null, null);
             var html = await resp.Content.ReadAsStringAsync(ct);
-            var m = TitleRegex().Match(html);
-            if (!m.Success) return null;
-            var title = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
-            // Drop the product suffix, which Google localises ("- Google Slides", "- Presentaciones de Google", …).
-            var cut = title.LastIndexOf(" - ", StringComparison.Ordinal);
-            if (cut > 0 && title[(cut + 3)..].Contains("Google", StringComparison.OrdinalIgnoreCase)) title = title[..cut];
-            return title.Length == 0 || title.Equals("Google Slides", StringComparison.OrdinalIgnoreCase) ? null : title;
+            return new(ParseTitle(html), ParseRevision(html));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
-            return null;
+            return new(null, null);
         }
+    }
+
+    private static string? ParseTitle(string html)
+    {
+        var m = TitleRegex().Match(html);
+        if (!m.Success) return null;
+        var title = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
+        // Drop the product suffix, which Google localises ("- Google Slides", "- Presentaciones de Google", …).
+        var cut = title.LastIndexOf(" - ", StringComparison.Ordinal);
+        if (cut > 0 && title[(cut + 3)..].Contains("Google", StringComparison.OrdinalIgnoreCase)) title = title[..cut];
+        return title.Length == 0 || title.Equals("Google Slides", StringComparison.OrdinalIgnoreCase) ? null : title;
+    }
+
+    // The page repeats the revision once per model chunk; take the highest.
+    private static long? ParseRevision(string html)
+    {
+        long? revision = null;
+        foreach (Match m in RevisionRegex().Matches(html))
+            if (long.TryParse(m.Groups[1].ValueSpan, out var r) && r > (revision ?? -1)) revision = r;
+        return revision;
     }
 
     private static string? ParsePptxTitle(byte[] pptx)

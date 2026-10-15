@@ -146,6 +146,7 @@
     // Header
     const title = s.title || (s.loading ? 'Loading…' : 'Untitled presentation');
     $('#deckTitle').textContent = title;
+    renderMediaBadge();
     document.title = hasDeck ? `${title} · Slides Presenter` : 'Google Slides NDI Presenter';
     const updated = (s.status.match(/at (\d\d:\d\d)/) || [])[1];
     $('#deckMeta').textContent = s.slideCount
@@ -253,6 +254,25 @@
   // ------------------------------------------------------------------ Audio and video list
 
   const START_LABELS = { automatic: 'Automatically', 'on click': 'On click', manual: 'Manually' };
+  // Whether each clip will actually play here (checked when the deck loads).
+  function accessPill(m) {
+    switch (m.access) {
+      case 'ok': return '<span class="pill">Can play</span>';
+      case 'no access': return `<span class="pill pill-bad" title="The ${m.kind} file in Google Drive isn’t shared with the Google account signed in here (or publicly), so it won’t play. Ask the owner to share it.">No access</span>`;
+      case 'private': return '<span class="pill pill-bad" title="This YouTube video is private or has been removed.">Unavailable</span>';
+      case 'not embeddable': return '<span class="pill pill-bad" title="The owner of this YouTube video doesn’t allow it to be played in other sites.">Can’t embed</span>';
+      default: return '<span class="pill" title="Couldn’t check this one.">Unknown</span>';
+    }
+  }
+  const mediaProblems = () => (state?.media || []).filter(m => m.access && m.access !== 'ok').length;
+  function renderMediaBadge() {
+    const n = mediaProblems();
+    const btn = $('#mediaInfoBtn');
+    btn.classList.toggle('has-problem', n > 0);
+    btn.title = n > 0
+      ? `Audio and video in this presentation — ${n === 1 ? 'one clip' : n + ' clips'} can’t play`
+      : 'Audio and video in this presentation';
+  }
   function showMediaList() {
     if (anyDialogOpen() || !state) return;
     const media = state.media || [];
@@ -261,14 +281,15 @@
       list.innerHTML = '<p class="media-empty">There’s no audio or video in this presentation.</p>';
     } else {
       list.innerHTML = `<table class="media-table">
-        <thead><tr><th>Slide</th><th>Media</th><th>Starts</th><th>Sound</th></tr></thead>
+        <thead><tr><th>Slide</th><th>Media</th><th>Starts</th><th>Sound</th><th>Access</th></tr></thead>
         <tbody>${media.map(m => `
           <tr class="${m.slide === state.slide ? 'is-current' : ''}">
             <td class="media-slide">${m.slide}</td>
             <td><div class="media-what"><svg class="ic"><use href="#i-${m.kind === 'audio' ? 'audio' : 'video'}"/></svg>
-              <span>${m.kind === 'audio' ? 'Audio' : 'Video'}<small title="${esc(m.name || '')}">${esc(m.name || '')}</small></span></div></td>
+              <span>${m.kind === 'audio' ? 'Audio' : m.source === 'youtube' ? 'YouTube video' : 'Video'}<small title="${esc(m.name || '')}">${esc(m.name || '')}</small></span></div></td>
             <td><span class="pill ${m.start === 'automatic' ? 'pill-auto' : ''}">${START_LABELS[m.start] || esc(m.start)}</span></td>
             <td>${m.muted ? '<span class="pill pill-muted">Muted</span>' : '<span class="pill">On</span>'}</td>
+            <td>${accessPill(m)}</td>
           </tr>`).join('')}</tbody></table>`;
     }
     $('#mediaDialog').showModal();

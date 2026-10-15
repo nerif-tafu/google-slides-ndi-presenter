@@ -69,6 +69,7 @@ public static partial class PresentationLoader
         await Cookies.SyncAsync(Google);
         var baseUrl = $"https://docs.google.com/presentation/d/{id}/export";
         var pageTask = FetchPageInfoAsync(id, ct);
+        var mediaTask = CheckMediaAsync(pageTask, ct);
         var pdfTask = DownloadAsync($"{baseUrl}/pdf", "%PDF"u8.ToArray(), ct);
         var pptxTask = DownloadAsync($"{baseUrl}/pptx", "PK"u8.ToArray(), ct);
         await Task.WhenAll(pdfTask, pptxTask);
@@ -76,6 +77,7 @@ public static partial class PresentationLoader
         var slides = await RenderPdfAsync(pdfTask.Result, width, height);
         var notesInfo = ParsePptxNotes(pptxTask.Result);
         var page = await pageTask;
+        var media = await mediaTask;
         var title = page.Title ?? ParsePptxTitle(pptxTask.Result);
 
         // Align notes to rendered pages. Depending on Google's export, skipped slides may or may
@@ -90,7 +92,57 @@ public static partial class PresentationLoader
             notes = Enumerable.Range(0, slides.Count)
                 .Select(i => i < notesInfo.Count ? notesInfo[i].Notes : "").ToList();
 
-        return new LoadedPresentation(id, string.IsNullOrWhiteSpace(title) ? "Untitled presentation" : title, slides, notes, page.Revision, page.Media);
+        return new LoadedPresentation(id, string.IsNullOrWhiteSpace(title) ? "Untitled presentation" : title, slides, notes, page.Revision, media);
+    }
+
+    private static async Task<IReadOnlyList<SlideMedia>> CheckMediaAsync(Task<PageInfo> pageTask, CancellationToken ct)
+    {
+        var page = await pageTask;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        var checks = page.Media
+            .Where(m => m.FileId != null)
+            .Select(m => (m.Source, Id: m.FileId!))
+            .Distinct()
+            .ToDictionary(k => k, k => CheckAccessAsync(k.Source, k.Id, timeout.Token));
+        try { await Task.WhenAll(checks.Values); } catch { /* individual failures are reported as null */ }
+        return page.Media
+            .Select(m => m.FileId != null && checks.TryGetValue((m.Source, m.FileId), out var t) && t.IsCompletedSuccessfully
+                ? m with { Access = t.Result }
+                : m)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Whether a clip will play for the signed-in account (or anyone, when signed out). Slides plays
+    /// Drive videos and audio only for people who can open the file itself, whoever can open the deck.
+    /// </summary>
+    private static async Task<string?> CheckAccessAsync(string source, string fileId, CancellationToken ct)
+    {
+        if (source == "youtube")
+        {
+            // oEmbed answers 401 when embedding is turned off and 403/404 for private or removed videos.
+            var url = "https://www.youtube.com/oembed?format=json&url=" +
+                Uri.EscapeDataString("https://www.youtube.com/watch?v=" + fileId);
+            using var yt = await Http.GetAsync(url, ct);
+            return (int)yt.StatusCode switch
+            {
+                200 => "ok",
+                401 => "not embeddable",
+                403 or 404 => "private",
+                _ => null,
+            };
+        }
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://drive.google.com/file/d/{Uri.EscapeDataString(fileId)}/view");
+        req.Headers.AcceptLanguage.ParseAdd("en-US");
+        using var resp = await Http.SendAsync(req, ct);
+        var status = (int)resp.StatusCode;
+        if (status is 401 or 403 or 404) return "no access";
+        if (status != 200) return null;
+        // A sign-in page instead of the file also means no access.
+        var host = resp.RequestMessage?.RequestUri?.Host ?? "";
+        return host.StartsWith("accounts.", StringComparison.OrdinalIgnoreCase) ? "no access" : "ok";
     }
 
     private static async Task<byte[]> DownloadAsync(string url, byte[] magic, CancellationToken ct)

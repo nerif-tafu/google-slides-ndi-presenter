@@ -42,7 +42,7 @@ Under the presenter view there's a text size control for the notes, an Auto-fit 
 
 If a slide has a video or audio clip, a Play button appears on the slide monitor with how far through it is, next to a button that takes it back to the start. Audio set to play on click in Slides only starts when you press Play here. While the slide is making any sound, a small level meter shows on the right of the monitor.
 
-The (i) next to the deck's name lists every slide with video or audio: what it is, whether it starts automatically, on click or manually, and whether its sound is muted. It's worth a look before the show so nothing catches you out.
+The (i) next to the deck's name lists every slide with video or audio: what it is, whether it starts automatically, on click or manually, whether its sound is muted, and whether it can actually play. Slides only plays a Drive video or audio file for people who can open that file, even if they can open the deck, so a clip that isn't shared with the Google account signed in here (or publicly) shows as "No access". YouTube videos that are private, removed or not allowed to be embedded are flagged too. When anything can't play, the (i) turns red. It's worth a look before the show so nothing catches you out.
 
 If someone edits the deck in Google Slides while it's open, the app notices within about 30 seconds: the Refresh button gets an amber dot and a message pops up. Press Refresh to pull the changes in. You stay on the slide you were on. The app never refreshes by itself, so nothing changes on air until you decide. Close (Ctrl+W) puts both outputs back to a holding screen ("The presentation will begin shortly" on the slides feed). If you close by accident, the message that pops up has a Reopen button.
 

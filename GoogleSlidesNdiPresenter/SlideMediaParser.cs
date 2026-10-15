@@ -6,8 +6,13 @@ namespace GoogleSlidesNdiPresenter;
 /// <summary>
 /// A video or audio clip on a slide, as set up in Google Slides.
 /// Start is "automatic", "on click" or "manual"; Muted is whether the clip starts muted.
+/// Source is "drive" or "youtube" (FileId is then the Drive file id or the YouTube video id).
+/// Access says whether it will play here: "ok", "no access" (a Drive file not shared with this
+/// account), "private" (a private or removed YouTube video), "not embeddable" (YouTube video whose
+/// owner turned off embedding), or null if it couldn't be checked.
 /// </summary>
-public sealed record SlideMedia(int Slide, string PageId, string Kind, string? Name, string? FileId, string Start, bool Muted);
+public sealed record SlideMedia(int Slide, string PageId, string Kind, string? Name, string? FileId, string Start, bool Muted,
+    string Source = "drive", string? Access = null);
 
 /// <summary>
 /// Reads the audio and video on each slide from the model data embedded in the deck's page
@@ -17,7 +22,8 @@ public sealed record SlideMedia(int Slide, string PageId, string Kind, string? N
 /// What the model looks like (one entry per object, entries are arrays):
 ///   [12, pageId, index, kind, ...]          a page; kind 0 = slide (1 layout, 2 master), index = slide order
 ///   [3, shapeId, type, transform, props, pageId]  an object on a page; type 157 = video;
-///                                            props are key/value pairs: 58 = Drive file id,
+///                                            props are key/value pairs: 57 = video source (1 YouTube,
+///                                            2 Drive), 58 = Drive file id or YouTube video id,
 ///                                            119 = muted (video), 124 = plays automatically (audio)
 ///   [44, shapeId, fileName, ...]             the file name of a video or audio object
 ///   [35, shapeId, 0, [0, 19, 1, trigger], pageId]  "play" animation; trigger 1 = on click,
@@ -78,7 +84,8 @@ public static partial class SlideMediaParser
                         ? (t == 1 ? "on click" : "automatic")
                         : "manual";
                     var muted = props.TryGetValue(119, out var mu) && AsInt(mu) == 1;
-                    media.Add(new SlideMedia(slide, pageId, "video", names.GetValueOrDefault(id), fileId, start, muted));
+                    var source = props.TryGetValue(57, out var src) && AsInt(src) == 1 ? "youtube" : "drive";
+                    media.Add(new SlideMedia(slide, pageId, "video", names.GetValueOrDefault(id), fileId, start, muted, source));
                 }
                 else if (fileId != null && names.ContainsKey(id))
                 {

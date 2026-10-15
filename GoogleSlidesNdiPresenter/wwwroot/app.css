@@ -293,6 +293,10 @@ kbd {
 .title-row h1 { min-width: 0; }
 .info-btn { flex: none; color: var(--text-3); margin-top: 4px; }
 .info-btn:hover:not(:disabled) { color: var(--text); }
+/* Some audio or video in the deck won't play (e.g. not shared with the signed-in account). */
+.info-btn { position: relative; }
+.info-btn.has-problem { color: var(--danger); }
+.info-btn.has-problem::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg, #000); }
 
 /* Audio and video list */
 .media-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
@@ -308,6 +312,7 @@ kbd {
 .pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
 .pill-auto { background: var(--accent-soft); color: var(--accent-hover); }
 .pill-muted { background: rgba(251,191,36,.14); color: var(--warn); }
+.pill-bad { background: rgba(248,113,113,.14); color: var(--danger); cursor: help; }
 .media-empty { margin: 4px 0 8px; color: var(--text-2); }
 .top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }

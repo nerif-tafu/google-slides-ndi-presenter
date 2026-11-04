@@ -8,8 +8,8 @@ internal static class NdiInterop
 {
     private const string Lib = "Processing.NDI.Lib.x64.dll";
 
-    // NDI_LIB_FOURCC('B','G','R','A')
-    public const uint FourCC_BGRA = 'B' | ('G' << 8) | ('R' << 16) | ('A' << 24);
+    // NDI_LIB_FOURCC('B','G','R','X'): the fourth byte is ignored, so the stream carries no alpha channel.
+    public const uint FourCC_BGRX = 'B' | ('G' << 8) | ('R' << 16) | ('X' << 24);
     public const int FrameFormatProgressive = 1;
     public const long SendTimecodeSynthesize = long.MaxValue;
 

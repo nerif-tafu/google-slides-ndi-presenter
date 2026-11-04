@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace GoogleSlidesNdiPresenter.Ndi;
 
 /// <summary>
-/// An NDI video source that continuously re-sends the most recent BGRA frame at a fixed frame rate
+/// An NDI video source that continuously re-sends the most recent frame, without alpha, at a fixed frame rate
 /// (NDI receivers expect a steady stream even for static content).
 /// </summary>
 public sealed class NdiSender : IDisposable
@@ -77,7 +77,7 @@ public sealed class NdiSender : IDisposable
         {
             xres = _width,
             yres = _height,
-            FourCC = NdiInterop.FourCC_BGRA,
+            FourCC = NdiInterop.FourCC_BGRX, // opaque: some receivers (e.g. WATCHOUT 6) show nothing for a source with alpha
             frame_rate_N = _fps * 1000,
             frame_rate_D = 1000,
             picture_aspect_ratio = (float)_width / _height,

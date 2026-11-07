@@ -22,7 +22,7 @@ internal static class Program
         PresentationLoader.Google = google;
         var controller = new PresentationController(settings);
         var audio = new AudioRouter();
-        audio.Configure(settings.AudioOutputDevice, settings.AudioOutputVolume, settings.AudioMonitorDevice, settings.AudioMonitorVolume);
+        audio.Configure(settings);
         MainForm? form = null;
         ApiServer api;
         try

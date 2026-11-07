@@ -34,12 +34,16 @@ public sealed class AppSettings
     public int Width { get; set; } = 1920;
     public int Height { get; set; } = 1080;
     public int FrameRate { get; set; } = 30;
-    /// <summary>Where slide audio plays: "default" (system default device), "none", or a device id.</summary>
+    /// <summary>Where slide audio plays: "default" (system default device), "none", or a device id ("asio:name" for an ASIO driver).</summary>
     public string AudioOutputDevice { get; set; } = AudioRouter.DefaultDevice;
     public int AudioOutputVolume { get; set; } = 100;
     /// <summary>Optional second device for monitoring (e.g. headphones): "none", "default" or a device id.</summary>
     public string AudioMonitorDevice { get; set; } = AudioRouter.NoDevice;
     public int AudioMonitorVolume { get; set; } = 100;
+    /// <summary>First output of the stereo pair used on an ASIO driver (0 = outputs 1 and 2, 2 = outputs 3 and 4).</summary>
+    public int AudioAsioChannel { get; set; }
+    /// <summary>Captured audio kept queued for an ASIO driver. Lower is less delay, but more likely to drop out.</summary>
+    public int AudioAsioBufferMs { get; set; } = 60;
     /// <summary>Allow the REST API / web remote to be reached from other devices (otherwise localhost only).</summary>
     public bool RemoteAccess { get; set; } = true;
     public List<RecentPresentation> Recent { get; set; } = [];

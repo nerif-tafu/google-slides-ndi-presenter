@@ -155,7 +155,7 @@ public sealed partial class ApiServer : IAsyncDisposable
         app.MapMethods("/api/video/restart", getPost, () => { controller.ControlVideo(VideoCommand.Restart); return State(); });
 
         // ---- Audio ----
-        app.MapGet("/api/audio/devices", () => Results.Json(new { devices = AudioRouter.ListDevices(), error = audio.Error }, Json));
+        app.MapGet("/api/audio/devices", () => Results.Json(new { devices = AudioRouter.ListDevices(), error = audio.Error, asio = audio.Asio }, Json));
         app.MapGet("/api/meter", (HttpContext ctx) => StreamMeterAsync(ctx, audio));
         app.MapPut("/api/audio", async (HttpContext ctx) =>
         {
@@ -166,9 +166,17 @@ public sealed partial class ApiServer : IAsyncDisposable
             settings.AudioOutputVolume = Math.Clamp(dto.OutputVolume, 0, 100);
             settings.AudioMonitorDevice = string.IsNullOrWhiteSpace(dto.MonitorDevice) ? AudioRouter.NoDevice : dto.MonitorDevice;
             settings.AudioMonitorVolume = Math.Clamp(dto.MonitorVolume, 0, 100);
-            audio.Configure(settings.AudioOutputDevice, settings.AudioOutputVolume, settings.AudioMonitorDevice, settings.AudioMonitorVolume);
+            if (dto.AsioChannel is int channel) settings.AudioAsioChannel = Math.Max(channel, 0);
+            if (dto.AsioBufferMs is int bufferMs) settings.AudioAsioBufferMs = Math.Clamp(bufferMs, 10, 500);
+            audio.Configure(settings);
             settings.Save();
-            return Results.Json(new { error = audio.Error }, Json);
+            return Results.Json(new { error = audio.Error, asio = audio.Asio }, Json);
+        });
+        app.MapPost("/api/audio/asio-panel", (HttpContext ctx) =>
+        {
+            if (!Privileged(ctx)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            audio.ShowAsioControlPanel();
+            return Results.NoContent();
         });
 
         // ---- Notes ----
@@ -425,7 +433,7 @@ public sealed partial class ApiServer : IAsyncDisposable
     [GeneratedRegex(@"^[A-Za-z0-9_-]{10,100}$")]
     private static partial Regex RequestAccessIdRegex();
 
-    private sealed record AudioDto(string? OutputDevice, int OutputVolume, string? MonitorDevice, int MonitorVolume);
+    private sealed record AudioDto(string? OutputDevice, int OutputVolume, string? MonitorDevice, int MonitorVolume, int? AsioChannel = null, int? AsioBufferMs = null);
 
     private sealed class SettingsDto
     {
@@ -443,6 +451,7 @@ public sealed partial class ApiServer : IAsyncDisposable
         public int AudioOutputVolume { get; set; }
         public string AudioMonitorDevice { get; set; } = "";
         public int AudioMonitorVolume { get; set; }
+        public int AudioAsioBufferMs { get; set; }
 
         public static SettingsDto From(AppSettings s) => new()
         {
@@ -450,6 +459,7 @@ public sealed partial class ApiServer : IAsyncDisposable
             RemoteAccess = s.RemoteAccess, Width = s.Width, Height = s.Height, FrameRate = s.FrameRate,
             AudioOutputDevice = s.AudioOutputDevice, AudioOutputVolume = s.AudioOutputVolume,
             AudioMonitorDevice = s.AudioMonitorDevice, AudioMonitorVolume = s.AudioMonitorVolume,
+            AudioAsioBufferMs = s.AudioAsioBufferMs,
         };
 
         public string? Validate()

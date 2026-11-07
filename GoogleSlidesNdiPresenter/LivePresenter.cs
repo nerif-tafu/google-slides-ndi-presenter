@@ -285,18 +285,18 @@ public sealed class LivePresenter : IDisposable
               window.top.postMessage({ gsAudio: toBase64(out), rate: ctx.sampleRate }, '*');
               sent++;
             };
-            // Collects 2048-frame blocks on the audio thread. A ScriptProcessor (the fallback) runs on
-            // the page's main thread, and whenever that's a little late Chromium drops 128-frame
-            // slices of audio, heard as clicks.
+            // Collects 512-frame blocks (about 11 ms, the delay this adds) on the audio thread. A
+            // ScriptProcessor (the fallback) runs on the page's main thread, and whenever that's a
+            // little late Chromium drops 128-frame slices of audio, heard as clicks.
             const worklet = `registerProcessor('gs-tap', class extends AudioWorkletProcessor {
-              constructor() { super(); this.buf = new Float32Array(4096); this.n = 0; }
+              constructor() { super(); this.buf = new Float32Array(1024); this.n = 0; }
               process(inputs) {
                 const inp = inputs[0];
                 if (inp && inp.length) {
                   const L = inp[0], R = inp[1] || inp[0];
                   for (let i = 0; i < L.length; i++) {
                     this.buf[2 * this.n] = L[i]; this.buf[2 * this.n + 1] = R[i];
-                    if (++this.n === 2048) { this.port.postMessage(this.buf, [this.buf.buffer]); this.buf = new Float32Array(4096); this.n = 0; }
+                    if (++this.n === 512) { this.port.postMessage(this.buf, [this.buf.buffer]); this.buf = new Float32Array(1024); this.n = 0; }
                   }
                 }
                 return true;

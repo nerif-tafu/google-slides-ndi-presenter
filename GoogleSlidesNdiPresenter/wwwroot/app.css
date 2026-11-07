@@ -491,6 +491,9 @@ kbd {
 .field-volume b { color: var(--text); font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
 .field-volume input[type="range"]:disabled { opacity: .35; cursor: default; }
 .field-volume input[type="range"] { height: 40px; width: 100%; accent-color: var(--accent); box-shadow: none; background: transparent; padding: 0; }
+#asioGroup { display: flex; flex-direction: column; gap: 12px; }
+.asio-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-3); font-size: 12.5px; }
+.asio-status .btn { flex: none; }
 .settings-note { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-3); font-size: 12.5px; }
 .form-error { margin-right: auto; color: var(--danger); font-size: 12.5px; font-weight: 600; }
 

@@ -88,6 +88,23 @@ Sound from videos (and any audio on the slides) doesn't come out of Windows' def
 
 Each one has its own volume. Changes apply as soon as you make them, so you can set levels while a video is playing. Audio isn't sent over NDI.
 
+### ASIO
+
+For the lowest delay, pick an **ASIO** driver as the device. Three more settings then appear:
+
+- **ASIO outputs** picks which pair of the interface's outputs to use.
+- **Safety buffer** is how much audio is kept queued to cover uneven delivery from the browser. It starts at 60 ms. Go lower for less delay, and go back up if you hear dropouts. It always stays above one driver buffer.
+- **Driver settings** opens the driver's own window, which is where the buffer size is usually set. Smaller buffers mean less delay and more load on the PC.
+
+The line next to it shows the driver's buffer, its reported output latency and an estimate of the total delay.
+
+A few things to know:
+
+- Only one of Output and Monitor can use ASIO at a time, but the other can still be a normal device.
+- It needs a 64-bit driver. Interfaces that only come with a 32-bit driver won't be listed.
+- The app runs the driver at 48 kHz and will switch the interface to that rate if it's set to something else. Check this if the interface is clocked with other gear.
+- Many drivers can only be used by one app at a time, so other software using the same driver may stop it opening.
+
 ## Settings
 
 Settings also covers the NDI source names, output resolution and frame rate, the remote control port, and whether other devices are allowed to connect at all. Apart from audio, these need a restart, which the Save button does for you.
@@ -151,4 +168,4 @@ Bump `<Version>` in `GoogleSlidesNdiPresenter.csproj`, then publish a release on
 - Google's sign-in page can refuse to work inside apps. If it ever does, share the deck as "Anyone with the link can view" instead.
 - The next-slide preview shows the slide as it looks once all its animations have played.
 - The slides feed goes through JPEG compression on the way out of the browser, so very fine detail can soften slightly.
-- Audio runs about a tenth of a second behind the picture.
+- Audio runs about a tenth of a second behind the picture on a normal device. With ASIO and a small buffer it can arrive before the picture, so you may need to delay it at the mixer to keep video clips in sync.

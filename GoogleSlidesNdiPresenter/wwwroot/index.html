@@ -319,6 +319,25 @@
             <label class="field field-volume"><span>Volume <b id="monVolLabel">100%</b></span>
               <input type="range" name="audioMonitorVolume" min="0" max="100" step="1"></label>
           </div>
+          <div id="asioGroup" hidden>
+            <div class="audio-row">
+              <label class="field"><span>ASIO outputs</span><select name="audioAsioChannel"></select></label>
+              <label class="field field-volume"><span>Safety buffer</span>
+                <select name="audioAsioBuffer">
+                  <option value="20">20 ms</option>
+                  <option value="30">30 ms</option>
+                  <option value="40">40 ms</option>
+                  <option value="60">60 ms</option>
+                  <option value="80">80 ms</option>
+                  <option value="100">100 ms</option>
+                  <option value="150">150 ms</option>
+                </select></label>
+            </div>
+            <div class="asio-status">
+              <span id="asioStatus"></span>
+              <button class="btn btn-secondary btn-sm" id="asioPanelBtn" type="button">Driver settings</button>
+            </div>
+          </div>
           <p class="form-error" id="audioError"></p>
         </section>
 

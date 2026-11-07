@@ -644,7 +644,7 @@
 
   // Audio settings apply live (no restart), so levels can be set while a video plays.
   async function fillAudio(form, s) {
-    const { devices, error } = await (await fetch('/api/audio/devices')).json();
+    const { devices, error, asio } = await (await fetch('/api/audio/devices')).json();
     const def = devices.find(d => d.isDefault);
     const options = (includeDefault) => [
       ...(includeDefault ? [new Option(`System default${def ? ` (${def.name})` : ''}`, 'default')] : []),
@@ -661,9 +661,35 @@
     pick(form.audioMonitorDevice, s.audioMonitorDevice);
     form.audioOutputVolume.value = s.audioOutputVolume;
     form.audioMonitorVolume.value = s.audioMonitorVolume;
+    const buffer = String(s.audioAsioBufferMs);
+    if (![...form.audioAsioBuffer.options].some(o => o.value === buffer)) form.audioAsioBuffer.add(new Option(`${buffer} ms`, buffer));
+    form.audioAsioBuffer.value = buffer;
+    renderAsio(form, asio);
     updateAudioLabels(form);
     $('#audioError').textContent = error || '';
   }
+  // Only known once the driver is open: its outputs, buffer size and latency.
+  function renderAsio(form, asio) {
+    $('#asioGroup').hidden = !asio;
+    if (!asio) return;
+    form.audioAsioChannel.replaceChildren(...asio.channelPairs.map((name, i) => new Option(name, i * 2)));
+    form.audioAsioChannel.value = String(asio.channel);
+    // 11 ms is the size of the blocks captured from the player.
+    const total = Math.round(11 + asio.bufferMs + asio.latencyMs);
+    $('#asioStatus').textContent = `Driver buffer ${asio.bufferFrames} samples, output latency ${asio.latencyMs.toFixed(1)} ms. About ${total} ms in total.`;
+  }
+  $('#asioPanelBtn').hidden = !isDesktop;
+  $('#asioPanelBtn').addEventListener('click', () =>
+    api('/api/audio/asio-panel', { method: 'POST', privileged: true }).catch(err => { $('#audioError').textContent = err.message; }));
+  // A new buffer size set in the driver's own window shows up when the app gets focus back.
+  window.addEventListener('focus', async () => {
+    if (!$('#settingsDialog').open || $('#asioGroup').hidden) return;
+    try {
+      const { error, asio } = await (await fetch('/api/audio/devices')).json();
+      renderAsio($('#settingsForm'), asio);
+      $('#audioError').textContent = error || '';
+    } catch { /* it'll update the next time Settings opens */ }
+  });
   function updateAudioLabels(form) {
     $('#outVolLabel').textContent = `${form.audioOutputVolume.value}%`;
     $('#monVolLabel').textContent = `${form.audioMonitorVolume.value}%`;
@@ -680,12 +706,19 @@
         const r = await api('/api/audio', { method: 'PUT', privileged: true, body: {
           outputDevice: form.audioOutputDevice.value, outputVolume: Number(form.audioOutputVolume.value),
           monitorDevice: form.audioMonitorDevice.value, monitorVolume: Number(form.audioMonitorVolume.value),
+          asioBufferMs: Number(form.audioAsioBuffer.value),
+          ...(form.audioAsioChannel.value ? { asioChannel: Number(form.audioAsioChannel.value) } : {}),
         } });
         $('#audioError').textContent = (r && r.error) || '';
-      } catch (err) { $('#audioError').textContent = err.message; }
+        if (r) renderAsio(form, r.asio);
+      } catch (err) {
+        $('#audioError').textContent = err.message;
+        // A device that won't open comes back as an error, along with what is open now.
+        if (err.data && 'asio' in err.data) renderAsio(form, err.data.asio);
+      }
     }, 80);
   }
-  for (const name of ['audioOutputDevice', 'audioMonitorDevice', 'audioOutputVolume', 'audioMonitorVolume'])
+  for (const name of ['audioOutputDevice', 'audioMonitorDevice', 'audioOutputVolume', 'audioMonitorVolume', 'audioAsioChannel', 'audioAsioBuffer'])
     $('#settingsForm')[name].addEventListener('input', saveAudio);
 
   // The Google account (desktop only) signs in through its own window and applies straight away.

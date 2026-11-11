@@ -168,4 +168,5 @@ Bump `<Version>` in `GoogleSlidesNdiPresenter.csproj`, then publish a release on
 - Google's sign-in page can refuse to work inside apps. If it ever does, share the deck as "Anyone with the link can view" instead.
 - The next-slide preview shows the slide as it looks once all its animations have played.
 - The slides feed goes through JPEG compression on the way out of the browser, so very fine detail can soften slightly.
+- If Google won't let the app capture a slide's audio file, it still plays, but straight to the Windows default device rather than the ones picked in Settings → Audio.
 - Audio runs about a tenth of a second behind the picture on a normal device. With ASIO and a small buffer it can arrive before the picture, so you may need to delay it at the mixer to keep video clips in sync.

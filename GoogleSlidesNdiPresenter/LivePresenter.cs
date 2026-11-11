@@ -93,15 +93,16 @@ public sealed class LivePresenter : IDisposable
             _ = core.ExecuteScriptAsync($"window.__gs && __gs.setMedia({_mediaJson})");
         };
         core.GetDevToolsProtocolEventReceiver("Page.screencastFrame").DevToolsProtocolEventReceived += OnScreencastFrame;
-        core.GetDevToolsProtocolEventReceiver("Fetch.requestPaused").DevToolsProtocolEventReceived += OnMediaResponse;
+        core.GetDevToolsProtocolEventReceiver("Fetch.requestPaused").DevToolsProtocolEventReceived += OnMediaRequest;
 
         await core.AddScriptToExecuteOnDocumentCreatedAsync(TrackerScript);
         await core.CallDevToolsProtocolMethodAsync("Page.enable", "{}");
         // Lets the audio capture load its AudioWorklet in the YouTube player frames, whose CSP blocks it.
         await core.CallDevToolsProtocolMethodAsync("Page.setBypassCSP", "{\"enabled\":true}");
-        // Holds each audio and video response so OnMediaResponse can allow it to be captured.
+        // Holds each audio and video request to a Google domain so OnMediaRequest can sign it in.
+        // (Not YouTube's video streams, which come from googlevideo.com and need nothing.)
         await core.CallDevToolsProtocolMethodAsync("Fetch.enable",
-            "{\"patterns\":[{\"urlPattern\":\"*\",\"resourceType\":\"Media\",\"requestStage\":\"Response\"}]}");
+            "{\"patterns\":[{\"urlPattern\":\"https://*.google.com/*\",\"resourceType\":\"Media\",\"requestStage\":\"Request\"}]}");
         await core.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride", JsonSerializer.Serialize(new
         {
             width = _width,
@@ -175,14 +176,21 @@ public sealed class LivePresenter : IDisposable
     }
 
     /// <summary>
-    /// Slide audio comes from another Google domain, and the player can only capture it if it loads
-    /// with CORS. Google doesn't allow that with the signed-in account's cookies, so an audio file
-    /// that's only shared with that account was refused and played straight to the Windows default
-    /// device instead of the chosen ones. This adds the CORS headers to media responses for the
-    /// Slides page, so the clip loads with the cookies and can be captured like any other.
-    /// Every held response has to be let go, whatever happens, or it never finishes loading.
+    /// Slide audio comes from another Google domain (drive.usercontent.google.com), and the player
+    /// can only capture it if it loads with CORS. Google answers CORS with "Access-Control-Allow-Origin: *",
+    /// which the browser only accepts for a request without cookies, and without cookies a Drive file
+    /// that's only shared with the signed-in account redirects to the sign-in page. So the clip was
+    /// refused and played straight to the Windows default device instead of the chosen ones.
+    /// <para>
+    /// The player asks for the clip with CORS but without cookies, and this adds the profile's own
+    /// Google cookies to that request. Google then serves the file, with the "*" the browser accepts
+    /// for it, and it can be captured like any other. (Rewriting the response's CORS headers instead
+    /// doesn't work: the browser checks the headers Google sent, not the rewritten ones.)
+    /// </para>
+    /// Only cross-origin (CORS) requests from the Slides page to a Google domain that carry no cookies
+    /// are changed. Every held request has to be let go, whatever happens, or it never loads.
     /// </summary>
-    private async void OnMediaResponse(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
+    private async void OnMediaRequest(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
         var core = _web.CoreWebView2;
         string? requestId = null;
@@ -191,20 +199,27 @@ public sealed class LivePresenter : IDisposable
             using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
             var root = doc.RootElement;
             requestId = root.GetProperty("requestId").GetString();
-            var origin = root.GetProperty("request").GetProperty("headers").EnumerateObject()
-                .FirstOrDefault(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)).Value;
-            if (core != null && requestId != null && origin.ValueKind == JsonValueKind.String && IsSlidesOrigin(origin.GetString()!)
-                && root.TryGetProperty("responseHeaders", out var headers))
+            var request = root.GetProperty("request");
+            var url = request.GetProperty("url").GetString();
+            var headers = request.GetProperty("headers").EnumerateObject()
+                .Select(h => (Name: h.Name, Value: h.Value.ValueKind == JsonValueKind.String ? h.Value.GetString() ?? "" : h.Value.ToString()))
+                .ToList();
+            var origin = headers.FirstOrDefault(h => h.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase)).Value;
+            var hasCookies = headers.Any(h => h.Name.Equals("Cookie", StringComparison.OrdinalIgnoreCase));
+            if (core != null && requestId != null && url != null && origin != null && !hasCookies
+                && IsSlidesOrigin(origin) && IsGoogleUrl(url))
             {
-                var responseHeaders = headers.EnumerateArray()
-                    .Select(h => new { name = h.GetProperty("name").GetString() ?? "", value = h.GetProperty("value").GetString() ?? "" })
-                    .Where(h => !h.name.StartsWith("Access-Control-Allow-", StringComparison.OrdinalIgnoreCase))
-                    .Append(new { name = "Access-Control-Allow-Origin", value = origin.GetString()! })
-                    .Append(new { name = "Access-Control-Allow-Credentials", value = "true" })
-                    .ToList();
-                await core.CallDevToolsProtocolMethodAsync("Fetch.continueResponse",
-                    JsonSerializer.Serialize(new { requestId, responseHeaders }));
-                return;
+                var cookies = await core.CookieManager.GetCookiesAsync(url);
+                if (cookies.Count > 0)
+                {
+                    var signedIn = headers
+                        .Select(h => new { name = h.Name, value = h.Value })
+                        .Append(new { name = "Cookie", value = string.Join("; ", cookies.Select(c => c.Name + "=" + c.Value)) })
+                        .ToList();
+                    await core.CallDevToolsProtocolMethodAsync("Fetch.continueRequest",
+                        JsonSerializer.Serialize(new { requestId, headers = signedIn }));
+                    return;
+                }
             }
         }
         catch { /* let it carry on unchanged below */ }
@@ -214,11 +229,13 @@ public sealed class LivePresenter : IDisposable
         catch { /* the player has been closed */ }
     }
 
+    /// <summary>An https URL on google.com or one of its subdomains, the only place the Google cookies are added.</summary>
+    private static bool IsGoogleUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+        (uri.Host == "google.com" || uri.Host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>The Slides page, or "null", which is what the browser sends once a request has been redirected to another domain.</summary>
-    private static bool IsSlidesOrigin(string origin) =>
-        origin == "null" ||
-        (Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
-         (uri.Host == "google.com" || uri.Host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase)));
+    private static bool IsSlidesOrigin(string origin) => origin == "null" || IsGoogleUrl(origin);
 
     private void OnScreencastFrame(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
@@ -298,14 +315,15 @@ public sealed class LivePresenter : IDisposable
 
           // Slides serves audio from another Google domain. Ask for it with CORS so the app can capture
           // it: without CORS the browser silences cross-site audio once it's routed through Web Audio.
-          // With credentials, so files only shared with the signed-in account load too (the app adds
-          // the CORS headers Google leaves out). If that's refused it tries without, then plays directly.
+          // Without credentials, since Google only allows CORS for those; the app adds the account's
+          // cookies to the request itself, so files only shared with it load too. If CORS is still
+          // refused, it plays directly.
           const googleHost = url => {
             try { const h = new URL(url, location.href).host; return h !== location.host && /(^|\.)google(usercontent)?\.com$/.test(h); }
             catch (e) { return false; }
           };
           const corsFor = (el, url) => {
-            if (el instanceof HTMLAudioElement && el.crossOrigin === null && el.dataset.gsDirect !== '1' && googleHost(url)) el.crossOrigin = 'use-credentials';
+            if (el instanceof HTMLAudioElement && el.crossOrigin === null && el.dataset.gsDirect !== '1' && googleHost(url)) el.crossOrigin = 'anonymous';
           };
           const srcDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
           Object.defineProperty(HTMLMediaElement.prototype, 'src', {
@@ -383,28 +401,22 @@ public sealed class LivePresenter : IDisposable
                 scriptProcessor();
               });
             };
-            // Reload a media element with a CORS mode ('use-credentials', 'anonymous') or without CORS (null),
-            // keeping its position and play state.
+            // Reload a media element with or without CORS, keeping its position and play state.
             const reload = (m, cors) => {
               const t = m.currentTime, playing = !m.paused;
-              if (cors) m.crossOrigin = cors; else m.removeAttribute('crossorigin');
+              if (cors) m.crossOrigin = 'anonymous'; else m.removeAttribute('crossorigin');
               m.load();
               try { m.currentTime = t; } catch (e) {}
               if (playing) m.play().catch(() => {});
             };
-            // If CORS is refused, try without credentials, and then play it normally rather than not at
-            // all. Played normally, it goes to the Windows default device, not the ones the app plays on.
+            // If CORS is refused, play it normally rather than not at all. Played normally, it goes to
+            // the Windows default device, not the ones the app plays on.
             document.addEventListener('error', e => {
               const m = e.target;
               if (m instanceof HTMLAudioElement && m.crossOrigin && !tapped.has(m) && m.dataset.gsDirect !== '1') {
-                if (m.crossOrigin === 'use-credentials') {
-                  diag('CORS with credentials refused, trying without: ' + (m.currentSrc || m.src).slice(0, 60));
-                  reload(m, 'anonymous');
-                  return;
-                }
                 m.dataset.gsDirect = '1';
                 diag('CORS refused, playing directly: ' + (m.currentSrc || m.src).slice(0, 60));
-                reload(m, null);
+                reload(m, false);
               }
             }, true);
             setInterval(() => {
@@ -413,9 +425,9 @@ public sealed class LivePresenter : IDisposable
                 if (m instanceof HTMLAudioElement) {
                   if (m.dataset.gsDirect === '1') continue;
                   const src = m.currentSrc || m.src;
-                  if (m.crossOrigin === null && src && googleHost(src)) { reload(m, 'use-credentials'); continue; } // set before we could catch it
+                  if (m.crossOrigin === null && src && googleHost(src)) { reload(m, true); continue; } // set before we could catch it
                   // Only tap audio that has loaded with CORS; tapping anything else would make it go silent.
-                  if (src && googleHost(src) && (!m.crossOrigin || m.readyState < 1 || m.error)) continue;
+                  if (src && googleHost(src) && (m.crossOrigin !== 'anonymous' || m.readyState < 1 || m.error)) continue;
                   if (!src) continue;
                 }
                 tapped.add(m);
